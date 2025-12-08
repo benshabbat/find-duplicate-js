@@ -5,6 +5,7 @@
   "main": "find-duplicates.js",
   "scripts": {
     "start": "node find-duplicates.js",
+    "ui": "node find-duplicates-ui.js",
     "test": "node find-duplicates.js ."
   },
   "keywords": [
