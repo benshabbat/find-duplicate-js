@@ -8,34 +8,77 @@ const path = require('path');
  */
 function extractFunctions(code, filePath) {
   const functions = [];
+  const functionPositions = new Map();
   
-  // תבניות regex לזיהוי פונקציות
-  const patterns = [
-    // function declaration: function name() {}
-    /function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*{([^}]*)}/g,
-    // arrow function: const name = () => {}
-    /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*{([^}]*)}/g,
-    // method: name() {}
-    /([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*{([^}]*)}/g
-  ];
-
-  patterns.forEach(pattern => {
-    let match;
-    while ((match = pattern.exec(code)) !== null) {
-      const name = match[1];
-      const body = match[2] || '';
-      
-      // נקה את הקוד מרווחים מיותרים ושורות ריקות
-      const normalizedBody = normalizeCode(body);
-      
-      // בדוק את כל הפונקציות ללא קשר לגודל
-      functions.push({
-        name,
-        body: normalizedBody,
-        originalBody: body,
-        filePath,
-        fullMatch: match[0]
+  // מצא את כל הפונקציות ומיקומן
+  const functionMatches = [];
+  
+  // 1. Arrow functions with const/let/var
+  const arrowRegex = /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{/g;
+  let match;
+  while ((match = arrowRegex.exec(code)) !== null) {
+    functionMatches.push({
+      name: match[1],
+      start: match.index,
+      bodyStart: match.index + match[0].length - 1,
+      type: 'arrow'
+    });
+  }
+  
+  // 2. Function declarations
+  const funcRegex = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/g;
+  while ((match = funcRegex.exec(code)) !== null) {
+    functionMatches.push({
+      name: match[1],
+      start: match.index,
+      bodyStart: match.index + match[0].length - 1,
+      type: 'function'
+    });
+  }
+  
+  // 3. Methods (class methods, object methods)
+  const methodRegex = /^\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/gm;
+  while ((match = methodRegex.exec(code)) !== null) {
+    const name = match[1];
+    // דלג על מילות מפתח של JavaScript
+    const jsKeywords = ['if', 'for', 'while', 'switch', 'catch', 'with'];
+    if (jsKeywords.includes(name)) {
+      continue;
+    }
+    
+    // בדוק שזה לא function declaration או arrow function
+    const before = code.substring(Math.max(0, match.index - 20), match.index);
+    if (!/(?:function|const|let|var|=|=>)\s*$/.test(before)) {
+      functionMatches.push({
+        name: match[1],
+        start: match.index,
+        bodyStart: match.index + match[0].length - 1,
+        type: 'method'
       });
+    }
+  }
+  
+  // מיין לפי מיקום
+  functionMatches.sort((a, b) => a.start - b.start);
+  
+  // חלץ את גוף כל פונקציה
+  functionMatches.forEach(funcMatch => {
+    const body = extractFunctionBody(code, funcMatch.bodyStart);
+    
+    if (body && body.trim().length > 0) {
+      const normalizedBody = normalizeCode(body);
+      const uniqueKey = `${filePath}:${funcMatch.start}`;
+      
+      if (!functionPositions.has(uniqueKey)) {
+        functionPositions.set(uniqueKey, true);
+        functions.push({
+          name: funcMatch.name,
+          body: normalizedBody,
+          originalBody: body,
+          filePath,
+          startIndex: funcMatch.start
+        });
+      }
     }
   });
 
@@ -43,15 +86,72 @@ function extractFunctions(code, filePath) {
 }
 
 /**
- * מנרמל קוד להשוואה - מסיר רווחים, הערות וכו'
+ * מחלץ את גוף הפונקציה מתוך הקוד
+ */
+function extractFunctionBody(code, startBrace) {
+  let braceCount = 1;
+  let i = startBrace + 1;
+  let inString = false;
+  let stringChar = '';
+  let inComment = false;
+  
+  while (i < code.length && braceCount > 0) {
+    const char = code[i];
+    const nextChar = code[i + 1];
+    
+    // Handle comments
+    if (!inString && char === '/' && nextChar === '/') {
+      // Skip to end of line
+      while (i < code.length && code[i] !== '\n') i++;
+      continue;
+    }
+    if (!inString && char === '/' && nextChar === '*') {
+      // Skip to end of block comment
+      i += 2;
+      while (i < code.length - 1 && !(code[i] === '*' && code[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    
+    // Handle strings
+    if (!inString && (char === '"' || char === "'" || char === '`')) {
+      inString = true;
+      stringChar = char;
+    } else if (inString && char === stringChar && code[i - 1] !== '\\') {
+      inString = false;
+    }
+    
+    // Count braces only outside strings
+    if (!inString) {
+      if (char === '{') braceCount++;
+      if (char === '}') braceCount--;
+    }
+    
+    i++;
+  }
+  
+  if (braceCount === 0) {
+    return code.substring(startBrace + 1, i - 1);
+  }
+  
+  return null;
+}
+
+/**
+ * מנרמל קוד להשוואה - מסיר רווחים, הערות ושמות משתנים
  */
 function normalizeCode(code) {
-  return code
+  let normalized = code
     .replace(/\/\*[\s\S]*?\*\//g, '') // הסר הערות מרובות שורות
     .replace(/\/\/.*/g, '') // הסר הערות שורה בודדת
-    .replace(/\s+/g, ' ') // החלף כל רווח ב-רווח בודד
-    .replace(/\s*([{}();,=+\-*/<>!&|])\s*/g, '$1') // הסר רווחים סביב אופרטורים
+    .replace(/`[^`]*`/g, '""') // החלף template literals במחרוזת גנרית
+    .replace(/'[^']*'/g, '""') // החלף מחרוזות במחרוזת גנרית
+    .replace(/"[^"]*"/g, '""') // החלף מחרוזות במחרוזת גנרית
+    .replace(/\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g, 'V') // החלף שמות משתנים ב-V
+    .replace(/\s+/g, '') // הסר כל רווח
     .trim();
+  
+  return normalized;
 }
 
 /**
@@ -134,7 +234,7 @@ function findDuplicates(directory, similarityThreshold = 80) {
   const jsFiles = findJsFiles(directory);
   const allFunctions = [];
 
-  console.log(`\n🔍 סורק ${jsFiles.length} קבצי JavaScript...\n`);
+  console.log(`\n🔍 Scanning ${jsFiles.length} JavaScript files...\n`);
 
   // חלץ פונקציות מכל הקבצים
   jsFiles.forEach(file => {
@@ -143,11 +243,11 @@ function findDuplicates(directory, similarityThreshold = 80) {
       const functions = extractFunctions(code, file);
       allFunctions.push(...functions);
     } catch (error) {
-      console.error(`❌ שגיאה בקריאת קובץ ${file}:`, error.message);
+      console.error(`❌ Error reading file ${file}:`, error.message);
     }
   });
 
-  console.log(`📊 נמצאו ${allFunctions.length} פונקציות\n`);
+  console.log(`📊 Found ${allFunctions.length} functions total\n`);
 
   const duplicates = [];
   const checked = new Set();
@@ -157,6 +257,11 @@ function findDuplicates(directory, similarityThreshold = 80) {
     for (let j = i + 1; j < allFunctions.length; j++) {
       const func1 = allFunctions[i];
       const func2 = allFunctions[j];
+      
+      // דלג אם זו אותה פונקציה (אותו קובץ ואותו שם)
+      if (func1.filePath === func2.filePath && func1.name === func2.name) {
+        continue;
+      }
       
       const key = [func1.filePath, func1.name, func2.filePath, func2.name].sort().join('|');
       
@@ -183,37 +288,39 @@ function findDuplicates(directory, similarityThreshold = 80) {
  */
 function displayResults(duplicates) {
   if (duplicates.length === 0) {
-    console.log('✅ לא נמצאו פונקציות כפולות!\n');
+    console.log('\n✅ Great! No duplicate functions found.\n');
     return;
   }
 
-  console.log(`\n⚠️  נמצאו ${duplicates.length} זוגות פונקציות דומות:\n`);
-  console.log('='.repeat(80));
+  console.log(`\n⚠️  Found ${duplicates.length} pairs of similar functions:\n`);
+  console.log('═'.repeat(90));
 
   duplicates.forEach((dup, index) => {
-    console.log(`\n${index + 1}. דמיון: ${dup.similarity}%`);
-    console.log(`   📁 ${path.relative(process.cwd(), dup.func1.filePath)}`);
-    console.log(`   🔹 ${dup.func1.name}()`);
-    console.log(`   📁 ${path.relative(process.cwd(), dup.func2.filePath)}`);
-    console.log(`   🔹 ${dup.func2.name}()`);
-    console.log('-'.repeat(80));
+    console.log(`\n📋 Match #${index + 1} - Similarity: ${dup.similarity}%`);
+    console.log(`\n   File 1: ${path.relative(process.cwd(), dup.func1.filePath)}`);
+    console.log(`   Function: ${dup.func1.name}()`);
+    console.log(`   Code: ${dup.func1.originalBody.substring(0, 60).replace(/\n/g, ' ')}...`);
+    console.log(`\n   File 2: ${path.relative(process.cwd(), dup.func2.filePath)}`);
+    console.log(`   Function: ${dup.func2.name}()`);
+    console.log(`   Code: ${dup.func2.originalBody.substring(0, 60).replace(/\n/g, ' ')}...`);
+    console.log('\n' + '─'.repeat(90));
   });
 
-  console.log(`\n💡 סה"כ נמצאו ${duplicates.length} זוגות פונקציות דומות\n`);
+  console.log(`\n💡 Summary: Found ${duplicates.length} duplicate function pair${duplicates.length > 1 ? 's' : ''}\n`);
 }
 
 // הרץ את הסקריפט
 const args = process.argv.slice(2);
 const directory = args[0] || process.cwd();
-const threshold = parseInt(args[1]) || 80;
+const threshold = parseInt(args[1]) || 70;
 
 if (!fs.existsSync(directory)) {
-  console.error(`❌ התיקייה ${directory} לא קיימת`);
+  console.error(`❌ Error: Directory "${directory}" does not exist`);
   process.exit(1);
 }
 
-console.log(`\n🚀 מחפש קוד כפול בתיקייה: ${directory}`);
-console.log(`📏 סף דמיון: ${threshold}%\n`);
+console.log(`\n🚀 Searching for duplicate code in: ${directory}`);
+console.log(`📏 Similarity threshold: ${threshold}%`);
 
 const duplicates = findDuplicates(directory, threshold);
 displayResults(duplicates);
