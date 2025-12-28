@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import http from 'http';
-import fs from 'fs';
-import path from 'path';
-import { findDuplicates, findJsFiles } from './find-duplicates-core.js';
+import { exec as open } from "child_process";
+import http from "http";
+import fs from "fs";
+import path from "path";
+import { findDuplicates, findJsFiles } from "./find-duplicates-core.js";
 
 const PORT = 3000;
 
@@ -248,38 +249,64 @@ function generateHTML(duplicates, stats) {
             </div>
         </div>
         
-        ${duplicates.length === 0 ? `
+        ${
+          duplicates.length === 0
+            ? `
             <div class="no-duplicates">
                 <div class="icon">✅</div>
                 <h2>Great! No Duplicates Found</h2>
                 <p>Your code is clean and well-organized.</p>
             </div>
-        ` : `
-            ${duplicates.map((dup, index) => `
+        `
+            : `
+            ${duplicates
+              .map(
+                (dup, index) => `
                 <div class="duplicate-card">
                     <div class="duplicate-header">
                         <h3>📋 Match #${index + 1}</h3>
-                        <div class="similarity-badge">${dup.similarity}% Similar</div>
+                        <div class="similarity-badge">${
+                          dup.similarity
+                        }% Similar</div>
                     </div>
                     <div class="duplicate-body">
                         <div class="function-comparison">
                             <div class="function-info">
                                 <h4>Function 1</h4>
-                                <div class="file-path">📁 ${dup.func1.filePath}</div>
-                                <div class="function-name">${dup.func1.name}()</div>
-                                <div class="code-preview">${escapeHtml(dup.func1.originalBody.substring(0, 200))}${dup.func1.originalBody.length > 200 ? '...' : ''}</div>
+                                <div class="file-path">📁 ${
+                                  dup.func1.filePath
+                                }</div>
+                                <div class="function-name">${
+                                  dup.func1.name
+                                }()</div>
+                                <div class="code-preview">${escapeHtml(
+                                  dup.func1.originalBody.substring(0, 200)
+                                )}${
+                  dup.func1.originalBody.length > 200 ? "..." : ""
+                }</div>
                             </div>
                             <div class="function-info">
                                 <h4>Function 2</h4>
-                                <div class="file-path">📁 ${dup.func2.filePath}</div>
-                                <div class="function-name">${dup.func2.name}()</div>
-                                <div class="code-preview">${escapeHtml(dup.func2.originalBody.substring(0, 200))}${dup.func2.originalBody.length > 200 ? '...' : ''}</div>
+                                <div class="file-path">📁 ${
+                                  dup.func2.filePath
+                                }</div>
+                                <div class="function-name">${
+                                  dup.func2.name
+                                }()</div>
+                                <div class="code-preview">${escapeHtml(
+                                  dup.func2.originalBody.substring(0, 200)
+                                )}${
+                  dup.func2.originalBody.length > 200 ? "..." : ""
+                }</div>
                             </div>
                         </div>
                     </div>
                 </div>
-            `).join('')}
-        `}
+            `
+              )
+              .join("")}
+        `
+        }
     </div>
     
     <script>
@@ -295,11 +322,11 @@ function generateHTML(duplicates, stats) {
 
 function escapeHtml(text) {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 // Start server
@@ -307,39 +334,39 @@ const args = process.argv.slice(2);
 const directory = args[0] || process.cwd();
 const threshold = parseInt(args[1]) || 70;
 
-console.log('\n🚀 Starting Duplicate Finder Server...\n');
+console.log("\n🚀 Starting Duplicate Finder Server...\n");
 console.log(`📂 Directory: ${directory}`);
 console.log(`📏 Threshold: ${threshold}%`);
 
 const server = http.createServer((req, res) => {
-  if (req.url === '/') {
+  if (req.url === "/") {
     try {
-      console.log('\n🔍 Analyzing JavaScript files...');
-      
+      console.log("\n🔍 Analyzing JavaScript files...");
+
       const jsFiles = findJsFiles(directory);
       const duplicates = findDuplicates(directory, threshold);
-      
+
       const stats = {
         filesScanned: jsFiles.length,
         functionsFound: duplicates.totalFunctions || 0,
         duplicatesFound: duplicates.duplicates.length,
-        threshold: threshold
+        threshold: threshold,
       };
-      
+
       const html = generateHTML(duplicates.duplicates, stats);
-      
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(html);
-      
-      console.log('✅ Analysis complete!');
+
+      console.log("✅ Analysis complete!");
     } catch (error) {
-      console.error('❌ Error:', error);
-      res.writeHead(500, { 'Content-Type': 'text/html' });
+      console.error("❌ Error:", error);
+      res.writeHead(500, { "Content-Type": "text/html" });
       res.end(`<h1>Error</h1><pre>${error.message}</pre>`);
     }
   } else {
     res.writeHead(404);
-    res.end('Not Found');
+    res.end("Not Found");
   }
 });
 
@@ -347,16 +374,15 @@ server.listen(PORT, () => {
   console.log(`\n✨ Server running at http://localhost:${PORT}`);
   console.log(`\n💡 Open your browser and visit: http://localhost:${PORT}`);
   console.log(`\n⏹️  Press Ctrl+C to stop the server\n`);
-  
+
   // Try to open browser automatically
-  import { exec as open } from 'child_process';
   const url = `http://localhost:${PORT}`;
-  
+
   switch (process.platform) {
-    case 'win32':
+    case "win32":
       open(`start ${url}`);
       break;
-    case 'darwin':
+    case "darwin":
       open(`open ${url}`);
       break;
     default:
