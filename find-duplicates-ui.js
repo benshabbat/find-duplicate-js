@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const { findDuplicates, findJsFiles } = require('./find-duplicates-core.js');
+import http from 'http';
+import fs from 'fs';
+import path from 'path';
+import { findDuplicates, findJsFiles } from './find-duplicates-core.js';
 
 const PORT = 3000;
 
@@ -349,7 +349,7 @@ server.listen(PORT, () => {
   console.log(`\n⏹️  Press Ctrl+C to stop the server\n`);
   
   // Try to open browser automatically
-  const open = require('child_process').exec;
+  import { exec as open } from 'child_process';
   const url = `http://localhost:${PORT}`;
   
   switch (process.platform) {

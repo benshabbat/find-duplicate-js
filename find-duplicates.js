@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
-const { findDuplicates, findJsFiles } = require('./find-duplicates-core.js');
+import fs from 'fs';
+import path from 'path';
+import { findDuplicates, findJsFiles } from './find-duplicates-core.js';
 
 /**
  * מציג את התוצאות

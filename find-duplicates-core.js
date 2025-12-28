@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 /**
  * מחלץ פונקציות מקוד JavaScript
  */
@@ -278,7 +278,7 @@ function findDuplicates(directory, similarityThreshold = 70) {
   };
 }
 
-module.exports = {
+export {
   extractFunctions,
   normalizeCode,
   calculateSimilarity,
