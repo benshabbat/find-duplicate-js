@@ -1,0 +1,28 @@
+# Test files
+tests/
+*.test.js
+
+# Demo project
+demo-project/
+
+# Development files
+.git/
+.gitignore
+.vscode/
+.DS_Store
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
