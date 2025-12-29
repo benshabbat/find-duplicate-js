@@ -2,11 +2,9 @@
 
 import { exec as open } from "child_process";
 import http from "http";
-import fs from "fs";
-import path from "path";
 import { findDuplicates, findJsFiles } from "./find-duplicates-core.js";
 
-const PORT = 3000;
+const PORT = 2712;
 
 function generateHTML(duplicates, stats) {
   return `<!DOCTYPE html>
