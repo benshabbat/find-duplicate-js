@@ -75,8 +75,8 @@ Then add to your `package.json` scripts:
 ```json
 {
   "scripts": {
-    "find-duplicates": "find-duplicates ./src",
-    "find-duplicates-ui": "find-duplicates-ui ./src"
+    "find-duplicates": "find-duplicates",
+    "find-duplicates-ui": "find-duplicates-ui"
   }
 }
 ```
