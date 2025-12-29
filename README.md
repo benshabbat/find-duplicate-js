@@ -1,1 +1,36 @@
-﻿# Find Duplicate JS 🔍[![npm version](https://img.shields.io/npm/v/find-duplicate-js.svg)](https://www.npmjs.com/package/find-duplicate-js)[![npm downloads](https://img.shields.io/npm/dm/find-duplicate-js.svg)](https://www.npmjs.com/package/find-duplicate-js)[![license](https://img.shields.io/npm/l/find-duplicate-js.svg)](https://github.com/benshabbat/find-duplicate-js/blob/main/LICENSE)[![Node.js Version](https://img.shields.io/node/v/find-duplicate-js.svg)](https://nodejs.org)A powerful tool to detect duplicate and similar code in JavaScript functions. Keep your codebase clean and maintainable!## Why Use This Tool?- **Find Duplicate Code** - Identify code that can be consolidated- **Improve Code Quality** - Detect similar functions that need refactoring- **Save Time** - Automatic scanning with configurable thresholds- **Interactive UI** - Beautiful web interface for visual analysis- **Easy to Use** - Simple CLI commands or programmatic API## Installation### Global Installation (Recommended)```bashnpm install -g find-duplicate-js```Then run from anywhere:```bashfind-duplicates ./srcfind-duplicates-ui```### Local Installation```bashnpm install find-duplicate-js```## Quick Start### Interactive Web UI (Recommended!)```bashfind-duplicates-ui```The browser will open automatically at `http://localhost:3000`### Command Line Interface```bashfind-duplicates                    # Scan current directoryfind-duplicates ./src              # Scan specific directoryfind-duplicates ./src 85           # Custom similarity threshold (85%)```## Usage Examples### Basic Scan```bash# Scan current directory with default threshold (70%)find-duplicates# Scan specific directoryfind-duplicates ./src# Set custom similarity thresholdfind-duplicates ./src 90```### Web UI Options```bash# Launch UI for current directoryfind-duplicates-ui# Launch UI for specific directoryfind-duplicates-ui ./src# Launch UI with custom thresholdfind-duplicates-ui ./src 80```### Programmatic Usage```javascriptimport { findDuplicates, findJsFiles } from 'find-duplicate-js';const directory = './src';const threshold = 80;// Find all JavaScript filesconst jsFiles = findJsFiles(directory);console.log(`Scanning ${jsFiles.length} files...`);// Find duplicatesconst result = findDuplicates(jsFiles, threshold);// Process resultsresult.duplicates.forEach(dup => {  console.log(`Found duplicate: ${dup.func1.name} and ${dup.func2.name}`);  console.log(`Similarity: ${dup.similarity}%`);});```## Example Output```🚀 Searching for duplicate code in: ./src📏 Similarity threshold: 80%🔍 Scanning 15 JavaScript files...📊 Found 45 functions⚠️  Found 3 pairs of similar functions:═══════════════════════════════════════════════════════════════════════════📋 Match #1 - Similarity: 95.50%   File 1: src/utils/validation.js   Function: validateEmail()   Code: function validateEmail(email) { const regex = /^[^\s@]+@[^...   File 2: src/helpers/validators.js   Function: checkEmail()   Code: function checkEmail(email) { const emailRegex = /^[^\s@]+@...───────────────────────────────────────────────────────────────────────────💡 Summary: Found 3 duplicate function pairs```## Features- **Smart Detection** - Finds function declarations, arrow functions, and class methods- **Recursive Scanning** - Scans entire directory trees- **Auto-Exclusion** - Ignores node_modules, .git, dist, build folders- **Code Normalization** - Removes comments and whitespace for accurate comparison- **Similarity Calculation** - Precise percentage-based matching- **Colorful CLI** - Beautiful terminal output with emojis- **Interactive Web UI** - Visual interface with syntax highlighting- **Configurable Threshold** - Set your own similarity requirements- **Programmatic API** - Use in your own scripts and tools- **Zero Dependencies** - Lightweight and fast## Web UI FeaturesThe interactive web UI provides:- **Syntax Highlighting** - Color-coded code display- **Side-by-Side Comparison** - View duplicate functions together- **Filtering Options** - Sort by similarity percentage- **Export Results** - Save findings for later review- **Responsive Design** - Works on all screen sizes## Configuration### Parameters| Parameter | Type | Default | Description ||-----------|------|---------|-------------|| `directory` | string | `.` (current) | Path to directory to scan || `threshold` | number | `70` | Minimum similarity percentage (0-100) |### Excluded DirectoriesBy default, these directories are automatically excluded:- `node_modules`- `.git`- `dist`- `build`- `.next`- `coverage`## API Reference### `findJsFiles(directory)`Recursively finds all JavaScript files in a directory.**Parameters:**- `directory` (string) - Path to scan**Returns:** Array of file paths### `findDuplicates(files, threshold)`Analyzes files and finds duplicate functions.**Parameters:**- `files` (string[]) - Array of file paths to analyze- `threshold` (number) - Similarity threshold (0-100)**Returns:** Object with:- `duplicates` - Array of duplicate pairs- `totalFunctions` - Total functions analyzed## System Requirements- **Node.js**: Version 14 or higher- **OS**: Windows, macOS, or Linux## ContributingContributions are welcome! Here's how you can help:1. Fork the repository2. Create a feature branch (`git checkout -b feature/amazing-feature`)3. Commit your changes (`git commit -m 'Add amazing feature'`)4. Push to the branch (`git push origin feature/amazing-feature`)5. Open a Pull Request## LicenseMIT © [benshabbat](https://github.com/benshabbat)## Links- [npm Package](https://www.npmjs.com/package/find-duplicate-js)- [GitHub Repository](https://github.com/benshabbat/find-duplicate-js)- [Report Issues](https://github.com/benshabbat/find-duplicate-js/issues)## Show Your SupportIf this tool helped you, please consider giving it a star on GitHub!---**Made with ❤️ by [benshabbat](https://github.com/benshabbat)**
+﻿# Find Duplicate JS
+
+[![npm version](https://img.shields.io/npm/v/find-duplicate-js.svg)](https://www.npmjs.com/package/find-duplicate-js)
+[![npm downloads](https://img.shields.io/npm/dm/find-duplicate-js.svg)](https://www.npmjs.com/package/find-duplicate-js)
+[![license](https://img.shields.io/npm/l/find-duplicate-js.svg)](https://github.com/benshabbat/find-duplicate-js/blob/main/LICENSE)
+
+A powerful tool to detect duplicate and similar code in JavaScript functions.
+
+## Installation
+
+`ash
+npm install -g find-duplicate-js
+`
+
+## Usage
+
+`ash
+find-duplicates ./src
+find-duplicates-ui
+`
+
+## Features
+
+- Smart function detection
+- Interactive web UI
+- Configurable similarity threshold
+- Zero dependencies
+
+## Links
+
+- [npm Package](https://www.npmjs.com/package/find-duplicate-js)
+- [GitHub](https://github.com/benshabbat/find-duplicate-js)
+
+## License
+
+MIT
