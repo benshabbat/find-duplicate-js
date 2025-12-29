@@ -1,6 +1,6 @@
 {
   "name": "find-duplicate-js",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A tool to find duplicate code in JavaScript functions - סקריפט לאיתור קטעי קוד כפולים בפונקציות JavaScript",
   "main": "find-duplicates.js",
   "type": "module",
