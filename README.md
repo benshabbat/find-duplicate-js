@@ -146,7 +146,7 @@ find-duplicates-ui ./src 80
 ```
 
 The web interface will:
-1. Start a local server on `http://localhost:3000`
+1. Start a local server on `http://localhost:2712`
 2. Automatically open your default browser
 3. Display an interactive dashboard with:
    - Project statistics
