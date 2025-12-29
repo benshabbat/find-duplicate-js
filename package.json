@@ -1,9 +1,13 @@
 {
   "name": "find-duplicate-js",
   "version": "1.0.0",
-  "description": "סקריפט לאיתור קטעי קוד כפולים בפונקציות JavaScript",
+  "description": "A tool to find duplicate code in JavaScript functions - סקריפט לאיתור קטעי קוד כפולים בפונקציות JavaScript",
   "main": "find-duplicates.js",
   "type": "module",
+  "bin": {
+    "find-duplicates": "./find-duplicates.js",
+    "find-duplicates-ui": "./find-duplicates-ui.js"
+  },
   "scripts": {
     "start": "node find-duplicates.js",
     "ui": "node find-duplicates-ui.js",
@@ -14,8 +18,30 @@
     "code",
     "analysis",
     "javascript",
-    "functions"
+    "functions",
+    "code-quality",
+    "refactoring",
+    "linter",
+    "ast",
+    "cli"
   ],
-  "author": "",
-  "license": "MIT"
+  "author": "bensh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bensh/find-duplicate-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bensh/find-duplicate-js/issues"
+  },
+  "homepage": "https://github.com/bensh/find-duplicate-js#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "find-duplicates.js",
+    "find-duplicates-core.js",
+    "find-duplicates-ui.js",
+    "README.md"
+  ]
 }
