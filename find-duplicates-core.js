@@ -2,6 +2,82 @@ import fs from 'fs';
 import path from 'path';
 
 /**
+ * Finds the matching closing parenthesis for an opening parenthesis
+ * @param {string} code - The JavaScript source code
+ * @param {number} openParenIndex - The index of the opening parenthesis
+ * @returns {number} The index of the matching closing parenthesis, or -1 if not found
+ * @description Handles nested parentheses, strings, and comments correctly
+ */
+function findMatchingParen(code, openParenIndex) {
+  let depth = 1;
+  let i = openParenIndex + 1;
+  let inString = false;
+  let stringChar = '';
+  let inSingleLineComment = false;
+  let inMultiLineComment = false;
+  
+  while (i < code.length && depth > 0) {
+    const char = code[i];
+    const prevChar = i > 0 ? code[i - 1] : '';
+    const nextChar = i < code.length - 1 ? code[i + 1] : '';
+    
+    // Handle single-line comments
+    if (!inString && !inMultiLineComment && char === '/' && nextChar === '/') {
+      inSingleLineComment = true;
+      i++;
+      continue;
+    }
+    
+    if (inSingleLineComment) {
+      if (char === '\n') {
+        inSingleLineComment = false;
+      }
+      i++;
+      continue;
+    }
+    
+    // Handle multi-line comments
+    if (!inString && !inSingleLineComment && char === '/' && nextChar === '*') {
+      inMultiLineComment = true;
+      i += 2;
+      continue;
+    }
+    
+    if (inMultiLineComment) {
+      if (char === '*' && nextChar === '/') {
+        inMultiLineComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    
+    // Handle strings
+    if (!inString && (char === '"' || char === "'" || char === '`')) {
+      inString = true;
+      stringChar = char;
+    } else if (inString && char === stringChar && prevChar !== '\\') {
+      inString = false;
+      stringChar = '';
+    }
+    
+    // Count parentheses only outside strings and comments
+    if (!inString && !inSingleLineComment && !inMultiLineComment) {
+      if (char === '(') {
+        depth++;
+      } else if (char === ')') {
+        depth--;
+      }
+    }
+    
+    i++;
+  }
+  
+  return depth === 0 ? i - 1 : -1;
+}
+
+/**
  * Extracts all functions from JavaScript code
  * @param {string} code - The JavaScript source code to parse
  * @param {string} filePath - The path to the source file (for tracking)
@@ -16,26 +92,60 @@ function extractFunctions(code, filePath) {
   const functionMatches = [];
   
   // 1. Arrow functions with const/let/var
-  const arrowRegex = /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{/g;
+  // Improved regex to handle complex parameters
+  const arrowPattern = /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s*)?\(/g;
   let match;
-  while ((match = arrowRegex.exec(code)) !== null) {
-    functionMatches.push({
-      name: match[1],
-      start: match.index,
-      bodyStart: match.index + match[0].length - 1,
-      type: 'arrow'
-    });
+  while ((match = arrowPattern.exec(code)) !== null) {
+    const startIndex = match.index;
+    const nameEndIndex = match.index + match[0].length;
+    
+    // Find the closing parenthesis of parameters (handle nested parens)
+    const closingParenIndex = findMatchingParen(code, nameEndIndex - 1);
+    
+    if (closingParenIndex !== -1) {
+      // Check if this is followed by =>
+      const afterParen = code.substring(closingParenIndex + 1).trimStart();
+      if (afterParen.startsWith('=>')) {
+        const arrowIndex = closingParenIndex + 1 + (code.substring(closingParenIndex + 1).length - afterParen.length);
+        const afterArrow = code.substring(arrowIndex + 2).trimStart();
+        
+        // Only extract if followed by {
+        if (afterArrow.startsWith('{')) {
+          const braceIndex = arrowIndex + 2 + (code.substring(arrowIndex + 2).length - afterArrow.length);
+          functionMatches.push({
+            name: match[1],
+            start: startIndex,
+            bodyStart: braceIndex,
+            type: 'arrow'
+          });
+        }
+      }
+    }
   }
   
   // 2. Function declarations
-  const funcRegex = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/g;
-  while ((match = funcRegex.exec(code)) !== null) {
-    functionMatches.push({
-      name: match[1],
-      start: match.index,
-      bodyStart: match.index + match[0].length - 1,
-      type: 'function'
-    });
+  const funcPattern = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g;
+  while ((match = funcPattern.exec(code)) !== null) {
+    const startIndex = match.index;
+    const parenStart = match.index + match[0].length - 1;
+    
+    // Find the closing parenthesis
+    const closingParenIndex = findMatchingParen(code, parenStart);
+    
+    if (closingParenIndex !== -1) {
+      const afterParen = code.substring(closingParenIndex + 1).trimStart();
+      
+      // Check if followed by {
+      if (afterParen.startsWith('{')) {
+        const braceIndex = closingParenIndex + 1 + (code.substring(closingParenIndex + 1).length - afterParen.length);
+        functionMatches.push({
+          name: match[1],
+          start: startIndex,
+          bodyStart: braceIndex,
+          type: 'function'
+        });
+      }
+    }
   }
   
   // 3. Methods (class methods, object methods)
