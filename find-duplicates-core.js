@@ -1,13 +1,18 @@
 import fs from 'fs';
 import path from 'path';
+
 /**
- * מחלץ פונקציות מקוד JavaScript
+ * Extracts all functions from JavaScript code
+ * @param {string} code - The JavaScript source code to parse
+ * @param {string} filePath - The path to the source file (for tracking)
+ * @returns {Array<{name: string, body: string, originalBody: string, filePath: string, startIndex: number}>} Array of extracted function objects
+ * @description Identifies and extracts arrow functions, function declarations, class methods, and async functions
  */
 function extractFunctions(code, filePath) {
   const functions = [];
   const functionPositions = new Map();
   
-  // מצא את כל הפונקציות ומיקומן
+  // Find all functions and their positions
   const functionMatches = [];
   
   // 1. Arrow functions with const/let/var
@@ -37,13 +42,13 @@ function extractFunctions(code, filePath) {
   const methodRegex = /^\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/gm;
   while ((match = methodRegex.exec(code)) !== null) {
     const name = match[1];
-    // דלג על מילות מפתח של JavaScript
+    // Skip JavaScript keywords
     const jsKeywords = ['if', 'for', 'while', 'switch', 'catch', 'with'];
     if (jsKeywords.includes(name)) {
       continue;
     }
     
-    // בדוק שזה לא function declaration או arrow function
+    // Check that it's not a function declaration or arrow function
     const before = code.substring(Math.max(0, match.index - 20), match.index);
     if (!/(?:function|const|let|var|=|=>)\s*$/.test(before)) {
       functionMatches.push({
@@ -55,10 +60,10 @@ function extractFunctions(code, filePath) {
     }
   }
   
-  // מיין לפי מיקום
+  // Sort by position
   functionMatches.sort((a, b) => a.start - b.start);
   
-  // חלץ את גוף כל פונקציה
+  // Extract each function body
   functionMatches.forEach(funcMatch => {
     const body = extractFunctionBody(code, funcMatch.bodyStart);
     
@@ -83,7 +88,11 @@ function extractFunctions(code, filePath) {
 }
 
 /**
- * מחלץ את גוף הפונקציה מתוך הקוד
+ * Extracts the body of a function from source code
+ * @param {string} code - The JavaScript source code
+ * @param {number} startBrace - The index of the opening brace
+ * @returns {string|null} The function body content, or null if extraction fails
+ * @description Handles nested braces, strings, and comments to accurately extract function bodies
  */
 function extractFunctionBody(code, startBrace) {
   let braceCount = 1;
@@ -134,24 +143,32 @@ function extractFunctionBody(code, startBrace) {
 }
 
 /**
- * מנרמל קוד להשוואה - מסיר רווחים, הערות ושמות משתנים
+ * Normalizes code for comparison by removing irrelevant differences
+ * @param {string} code - The JavaScript code to normalize
+ * @returns {string} Normalized code with whitespace, comments, and variable names removed
+ * @description Removes: multi-line comments, single-line comments, string literals, template literals,
+ * variable names (replaced with 'V'), and all whitespace. This allows for semantic comparison.
  */
 function normalizeCode(code) {
   let normalized = code
-    .replace(/\/\*[\s\S]*?\*\//g, '') // הסר הערות מרובות שורות
-    .replace(/\/\/.*/g, '') // הסר הערות שורה בודדת
-    .replace(/`[^`]*`/g, '""') // החלף template literals במחרוזת גנרית
-    .replace(/'[^']*'/g, '""') // החלף מחרוזות במחרוזת גנרית
-    .replace(/"[^"]*"/g, '""') // החלף מחרוזות במחרוזת גנרית
-    .replace(/\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g, 'V') // החלף שמות משתנים ב-V
-    .replace(/\s+/g, '') // הסר כל רווח
+    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
+    .replace(/\/\/.*/g, '') // Remove single-line comments
+    .replace(/`[^`]*`/g, '""') // Replace template literals with generic string
+    .replace(/'[^']*'/g, '""') // Replace string literals with generic string
+    .replace(/"[^"]*"/g, '""') // Replace string literals with generic string
+    .replace(/\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g, 'V') // Replace variable names with V
+    .replace(/\s+/g, '') // Remove all whitespace
     .trim();
   
   return normalized;
 }
 
 /**
- * מחשב דמיון בין שני קטעי קוד (באחוזים)
+ * Calculates the similarity between two code snippets as a percentage
+ * @param {string} code1 - First code snippet
+ * @param {string} code2 - Second code snippet
+ * @returns {number} Similarity percentage (0-100)
+ * @description Uses Levenshtein distance algorithm to measure code similarity
  */
 function calculateSimilarity(code1, code2) {
   if (code1 === code2) return 100;
@@ -162,7 +179,7 @@ function calculateSimilarity(code1, code2) {
   
   if (maxLen === 0) return 100;
   
-  // השתמש ב-Levenshtein distance פשוט
+  // Use simple Levenshtein distance
   const distance = levenshteinDistance(code1, code2);
   const similarity = ((maxLen - distance) / maxLen) * 100;
   
@@ -170,7 +187,11 @@ function calculateSimilarity(code1, code2) {
 }
 
 /**
- * מחשב Levenshtein distance בין שני מחרוזות
+ * Calculates the Levenshtein distance between two strings
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @returns {number} The minimum number of single-character edits required to change one string into the other
+ * @description Classic dynamic programming implementation of edit distance
  */
 function levenshteinDistance(str1, str2) {
   const matrix = [];
@@ -201,7 +222,11 @@ function levenshteinDistance(str1, str2) {
 }
 
 /**
- * מוצא את כל קבצי ה-JS בתיקייה באופן רקורסיבי
+ * Recursively finds all JavaScript files in a directory
+ * @param {string} dir - The directory to search
+ * @param {Array<string>} fileList - Accumulator array for found files (used internally)
+ * @returns {Array<string>} Array of absolute file paths to .js and .jsx files
+ * @description Automatically skips node_modules, .git, dist, and build directories
  */
 function findJsFiles(dir, fileList = []) {
   const files = fs.readdirSync(dir);
@@ -211,7 +236,7 @@ function findJsFiles(dir, fileList = []) {
     const stat = fs.statSync(filePath);
 
     if (stat.isDirectory()) {
-      // דלג על node_modules ו-.git
+      // Skip node_modules and .git
       if (file !== 'node_modules' && file !== '.git' && file !== 'dist' && file !== 'build') {
         findJsFiles(filePath, fileList);
       }
@@ -224,13 +249,19 @@ function findJsFiles(dir, fileList = []) {
 }
 
 /**
- * בודק כפילויות בפונקציות
+ * Finds duplicate functions in a directory
+ * @param {string} directory - The root directory to analyze
+ * @param {number} similarityThreshold - Minimum similarity percentage to consider as duplicate (default: 70)
+ * @returns {{duplicates: Array<{func1: Object, func2: Object, similarity: string}>, totalFunctions: number}} Analysis results
+ * @description Extracts all functions from JavaScript files in the directory and compares them pairwise
+ * to find duplicates based on normalized code similarity
  */
 function findDuplicates(directory, similarityThreshold = 70) {
   const jsFiles = findJsFiles(directory);
   const allFunctions = [];
+  const similarityCache = new Map(); // Cache for similarity calculations
 
-  // חלץ פונקציות מכל הקבצים
+  // Extract functions from all files
   jsFiles.forEach(file => {
     try {
       const code = fs.readFileSync(file, 'utf8');
@@ -244,15 +275,24 @@ function findDuplicates(directory, similarityThreshold = 70) {
   const duplicates = [];
   const checked = new Set();
 
-  // השווה כל פונקציה עם כל הפונקציות האחרות
+  // Compare each function with all other functions
   for (let i = 0; i < allFunctions.length; i++) {
     for (let j = i + 1; j < allFunctions.length; j++) {
       const func1 = allFunctions[i];
       const func2 = allFunctions[j];
       
-      // דלג אם זו אותה פונקציה (אותו קובץ ואותו שם)
+      // Skip if it's the same function (same file and same name)
       if (func1.filePath === func2.filePath && func1.name === func2.name) {
         continue;
+      }
+      
+      // Early exit: skip if size difference is too large (>50% difference)
+      const len1 = func1.body.length;
+      const len2 = func2.body.length;
+      const sizeDiffPercent = Math.abs(len1 - len2) / Math.max(len1, len2) * 100;
+      
+      if (sizeDiffPercent > 50) {
+        continue; // Functions too different in size to be similar
       }
       
       const key = [func1.filePath, func1.name, func2.filePath, func2.name].sort().join('|');
@@ -260,7 +300,16 @@ function findDuplicates(directory, similarityThreshold = 70) {
       if (checked.has(key)) continue;
       checked.add(key);
 
-      const similarity = calculateSimilarity(func1.body, func2.body);
+      // Check cache first
+      const cacheKey = `${func1.filePath}:${func1.startIndex}-${func2.filePath}:${func2.startIndex}`;
+      let similarity;
+      
+      if (similarityCache.has(cacheKey)) {
+        similarity = similarityCache.get(cacheKey);
+      } else {
+        similarity = calculateSimilarity(func1.body, func2.body);
+        similarityCache.set(cacheKey, similarity);
+      }
 
       if (similarity >= similarityThreshold) {
         duplicates.push({

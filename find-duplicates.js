@@ -5,7 +5,9 @@ import path from 'path';
 import { findDuplicates, findJsFiles } from './find-duplicates-core.js';
 
 /**
- * מציג את התוצאות
+ * Displays the duplicate detection results to the console
+ * @param {{duplicates: Array, totalFunctions: number}} result - The analysis result object
+ * @description Formats and prints duplicate function pairs with similarity scores and file locations
  */
 function displayResults(result) {
   const duplicates = result.duplicates;
@@ -32,7 +34,7 @@ function displayResults(result) {
   console.log(`\n💡 Summary: Found ${duplicates.length} duplicate function pair${duplicates.length > 1 ? 's' : ''}\n`);
 }
 
-// הרץ את הסקריפט
+// Run the script
 const args = process.argv.slice(2);
 const directory = args[0] || process.cwd();
 const threshold = parseInt(args[1]) || 70;

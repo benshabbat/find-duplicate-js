@@ -6,6 +6,13 @@ import { findDuplicates, findJsFiles } from "./find-duplicates-core.js";
 
 const PORT = 2712;
 
+/**
+ * Generates the HTML page for the web UI
+ * @param {Array} duplicates - Array of duplicate function pairs
+ * @param {{filesScanned: number, functionsFound: number, duplicatesFound: number, threshold: number}} stats - Analysis statistics
+ * @returns {string} Complete HTML document as a string
+ * @description Creates a responsive, interactive web interface with statistics dashboard and side-by-side code comparison
+ */
 function generateHTML(duplicates, stats) {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -318,6 +325,11 @@ function generateHTML(duplicates, stats) {
 </html>`;
 }
 
+/**
+ * Escapes HTML special characters to prevent XSS attacks
+ * @param {string} text - The text to escape
+ * @returns {string} HTML-safe text
+ */
 function escapeHtml(text) {
   return text
     .replace(/&/g, "&amp;")
