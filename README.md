@@ -75,8 +75,8 @@ Then add to your `package.json` scripts:
 ```json
 {
   "scripts": {
-    "find-duplicates": "find-duplicates",
-    "find-duplicates:ui": "find-duplicates --ui"
+    "find-duplicate": "find-duplicate",
+    "find-duplicate:ui": "find-duplicate --ui"
   }
 }
 ```
@@ -96,16 +96,16 @@ Run a quick analysis from the command line and get results in your terminal:
 
 ```bash
 # Analyze current directory with default threshold (70%)
-find-duplicates
+find-duplicate
 
 # Analyze specific directory
-find-duplicates ./src
+find-duplicate ./src
 
 # Custom similarity threshold (80%)
-find-duplicates ./src 80
+find-duplicate ./src 80
 
 # Analyze entire project
-find-duplicates . 75
+find-duplicate . 75
 ```
 
 **CLI Output Example:**
@@ -143,18 +143,18 @@ Launch an interactive web interface for a better visual experience using the `--
 
 ```bash
 # Start web UI server (opens browser automatically)
-find-duplicates --ui
+find-duplicate --ui
 
 # Analyze specific directory
-find-duplicates --ui ./src
+find-duplicate --ui ./src
 
 # Custom threshold
-find-duplicates --ui ./src 80
+find-duplicate --ui ./src 80
 ```
 
 **Alternative:** You can also use the dedicated UI command (backwards compatibility):
 ```bash
-find-duplicates-ui ./src 80
+find-duplicate-ui ./src 80
 ```
 
 The web interface will:
@@ -229,8 +229,8 @@ Presents findings in an easy-to-understand format (CLI or Web UI) showing:
 ### Command Line Arguments
 
 ```bash
-find-duplicates [directory] [threshold]
-find-duplicates-ui [directory] [threshold]
+find-duplicate [directory] [threshold]
+find-duplicate-ui [directory] [threshold]
 ```
 
 **Parameters:**
@@ -241,13 +241,13 @@ find-duplicates-ui [directory] [threshold]
 
 ```bash
 # Very strict (only near-identical code)
-find-duplicates ./src 95
+find-duplicate ./src 95
 
 # Moderate (recommended)
-find-duplicates ./src 70
+find-duplicate ./src 70
 
 # Lenient (catches more potential duplicates)
-find-duplicates ./src 50
+find-duplicate ./src 50
 ```
 
 ### Threshold Guidelines:

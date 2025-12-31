@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2025-12-31
+
+### 📝 Changes
+
+#### Simplified Command Names
+- **Changed Command**: `find-duplicates` → `find-duplicate` (removed 's')
+- **Changed UI Command**: `find-duplicates-ui` → `find-duplicate-ui` (removed 's')
+- **Reason**: Avoid confusion - file names have 's' (find-duplicates.js) but commands don't
+- **Backwards Compatibility**: Old commands may still work in cached installations
+
+**New Usage:**
+```bash
+find-duplicate ./src 80
+find-duplicate --ui ./src
+find-duplicate-ui ./src
+```
+
 ## [1.3.0] - 2025-12-31
 
 ### 🚀 New Features

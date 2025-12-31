@@ -1,12 +1,12 @@
 {
   "name": "find-duplicate-js",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "A tool to find duplicate code in JavaScript functions",
   "main": "find-duplicates.js",
   "type": "module",
   "bin": {
-    "find-duplicates": "find-duplicates.js",
-    "find-duplicates-ui": "find-duplicates-ui.js"
+    "find-duplicate": "find-duplicates.js",
+    "find-duplicate-ui": "find-duplicates-ui.js"
   },
   "scripts": {
     "start": "node find-duplicates.js",
