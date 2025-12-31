@@ -76,9 +76,16 @@ Then add to your `package.json` scripts:
 {
   "scripts": {
     "find-duplicates": "find-duplicates",
-    "find-duplicates-ui": "find-duplicates-ui"
+    "find-duplicates:ui": "find-duplicates --ui"
   }
 }
+```
+
+Or use the built-in npm scripts:
+```bash
+npm start        # Run CLI mode
+npm run ui       # Run UI mode
+npm test         # Run tests
 ```
 
 ## 🚀 Usage
@@ -132,16 +139,21 @@ find-duplicates . 75
 
 ### Web UI Mode
 
-Launch an interactive web interface for a better visual experience:
+Launch an interactive web interface for a better visual experience using the `--ui` flag:
 
 ```bash
 # Start web UI server (opens browser automatically)
-find-duplicates-ui
+find-duplicates --ui
 
 # Analyze specific directory
-find-duplicates-ui ./src
+find-duplicates --ui ./src
 
 # Custom threshold
+find-duplicates --ui ./src 80
+```
+
+**Alternative:** You can also use the dedicated UI command (backwards compatibility):
+```bash
 find-duplicates-ui ./src 80
 ```
 
