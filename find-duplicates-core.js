@@ -78,11 +78,11 @@ function findMatchingParen(code, openParenIndex) {
 }
 
 /**
- * Extracts all functions from JavaScript code
- * @param {string} code - The JavaScript source code to parse
+ * Extracts all functions from JavaScript/TypeScript code
+ * @param {string} code - The JavaScript/TypeScript source code to parse
  * @param {string} filePath - The path to the source file (for tracking)
  * @returns {Array<{name: string, body: string, originalBody: string, filePath: string, startIndex: number}>} Array of extracted function objects
- * @description Identifies and extracts arrow functions, function declarations, class methods, and async functions
+ * @description Identifies and extracts arrow functions, function declarations, class methods, async functions, and TypeScript functions
  */
 function extractFunctions(code, filePath) {
   const functions = [];
@@ -91,9 +91,9 @@ function extractFunctions(code, filePath) {
   // Find all functions and their positions
   const functionMatches = [];
   
-  // 1. Arrow functions with const/let/var
-  // Improved regex to handle complex parameters
-  const arrowPattern = /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s*)?\(/g;
+  // 1. Arrow functions with const/let/var (with optional TypeScript type annotations)
+  // Improved regex to handle complex parameters and type annotations
+  const arrowPattern = /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?::\s*[^=]+)?\s*=\s*(?:async\s*)?\(/g;
   let match;
   while ((match = arrowPattern.exec(code)) !== null) {
     const startIndex = match.index;
@@ -103,8 +103,17 @@ function extractFunctions(code, filePath) {
     const closingParenIndex = findMatchingParen(code, nameEndIndex - 1);
     
     if (closingParenIndex !== -1) {
-      // Check if this is followed by =>
-      const afterParen = code.substring(closingParenIndex + 1).trimStart();
+      // Check if this is followed by => (with optional return type)
+      let afterParen = code.substring(closingParenIndex + 1).trimStart();
+      
+      // Skip TypeScript return type annotation if present (e.g., ): ReturnType =>)
+      if (afterParen.startsWith(':')) {
+        const arrowPos = afterParen.indexOf('=>');
+        if (arrowPos !== -1) {
+          afterParen = afterParen.substring(arrowPos).trimStart();
+        }
+      }
+      
       if (afterParen.startsWith('=>')) {
         const arrowIndex = closingParenIndex + 1 + (code.substring(closingParenIndex + 1).length - afterParen.length);
         const afterArrow = code.substring(arrowIndex + 2).trimStart();
@@ -123,8 +132,8 @@ function extractFunctions(code, filePath) {
     }
   }
   
-  // 2. Function declarations
-  const funcPattern = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g;
+  // 2. Function declarations (with optional TypeScript type annotations)
+  const funcPattern = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:<[^>]+>)?\s*\(/g;
   while ((match = funcPattern.exec(code)) !== null) {
     const startIndex = match.index;
     const parenStart = match.index + match[0].length - 1;
@@ -133,7 +142,15 @@ function extractFunctions(code, filePath) {
     const closingParenIndex = findMatchingParen(code, parenStart);
     
     if (closingParenIndex !== -1) {
-      const afterParen = code.substring(closingParenIndex + 1).trimStart();
+      let afterParen = code.substring(closingParenIndex + 1).trimStart();
+      
+      // Skip TypeScript return type annotation if present
+      if (afterParen.startsWith(':')) {
+        const bracePos = afterParen.indexOf('{');
+        if (bracePos !== -1) {
+          afterParen = afterParen.substring(bracePos).trimStart();
+        }
+      }
       
       // Check if followed by {
       if (afterParen.startsWith('{')) {
@@ -148,8 +165,8 @@ function extractFunctions(code, filePath) {
     }
   }
   
-  // 3. Methods (class methods, object methods)
-  const methodRegex = /^\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/gm;
+  // 3. Methods (class methods, object methods) with optional TypeScript annotations
+  const methodRegex = /^\s*(?:public|private|protected|static|async)?\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:<[^>]+>)?\s*\([^)]*\)\s*(?::\s*[^{]+)?\s*\{/gm;
   while ((match = methodRegex.exec(code)) !== null) {
     const name = match[1];
     // Skip JavaScript keywords
@@ -254,10 +271,10 @@ function extractFunctionBody(code, startBrace) {
 
 /**
  * Normalizes code for comparison by removing irrelevant differences
- * @param {string} code - The JavaScript code to normalize
- * @returns {string} Normalized code with whitespace, comments, and variable names removed
+ * @param {string} code - The JavaScript/TypeScript code to normalize
+ * @returns {string} Normalized code with whitespace, comments, type annotations, and variable names removed
  * @description Removes: multi-line comments, single-line comments, string literals, template literals,
- * variable names (replaced with 'V'), and all whitespace. This allows for semantic comparison.
+ * TypeScript type annotations, variable names (replaced with 'V'), and all whitespace. This allows for semantic comparison.
  */
 function normalizeCode(code) {
   let normalized = code
@@ -266,6 +283,13 @@ function normalizeCode(code) {
     .replace(/`[^`]*`/g, '""') // Replace template literals with generic string
     .replace(/'[^']*'/g, '""') // Replace string literals with generic string
     .replace(/"[^"]*"/g, '""') // Replace string literals with generic string
+    // TypeScript specific: Remove type annotations
+    .replace(/:\s*[a-zA-Z_$<>[\]{}|&,\s]+(?=\s*[=,)\]};])/g, '') // Remove type annotations (e.g., : string, : number[], : Array<T>)
+    .replace(/:\s*[a-zA-Z_$<>[\]{}|&,\s]+$/gm, '') // Remove type annotations at end of line
+    .replace(/<[a-zA-Z_$<>[\]{}|&,\s]+>/g, '') // Remove generic type parameters (e.g., <T>, <T extends U>)
+    .replace(/\bas\s+[a-zA-Z_$][a-zA-Z0-9_$]*/g, '') // Remove type assertions (e.g., as string)
+    .replace(/\binterface\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s*{[^}]*}/g, '') // Remove interface declarations
+    .replace(/\btype\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s*=\s*[^;]+;/g, '') // Remove type aliases
     .replace(/\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g, 'V') // Replace variable names with V
     .replace(/\s+/g, '') // Remove all whitespace
     .trim();
@@ -350,7 +374,7 @@ function findJsFiles(dir, fileList = []) {
       if (file !== 'node_modules' && file !== '.git' && file !== 'dist' && file !== 'build') {
         findJsFiles(filePath, fileList);
       }
-    } else if (file.endsWith('.js') || file.endsWith('.jsx')) {
+    } else if (file.endsWith('.js') || file.endsWith('.jsx') || file.endsWith('.ts') || file.endsWith('.tsx')) {
       fileList.push(filePath);
     }
   });

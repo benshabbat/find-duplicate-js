@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/find-duplicate-js.svg)](https://www.npmjs.com/package/find-duplicate-js)
 [![license](https://img.shields.io/npm/l/find-duplicate-js.svg)](https://github.com/benshabbat/find-duplicate-js/blob/main/LICENSE)
 
-A powerful and intelligent tool to detect duplicate and similar code in JavaScript projects. Find Duplicate JS helps you maintain cleaner codebases by automatically identifying redundant functions and code patterns across your project.
+A powerful and intelligent tool to detect duplicate and similar code in JavaScript and TypeScript projects. Find Duplicate JS helps you maintain cleaner codebases by automatically identifying redundant functions and code patterns across your project.
 
 ## 📋 Table of Contents
 
@@ -39,9 +39,12 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
   - Function declarations (`function func() {}`)
   - Class methods and object methods
   - Async functions
+  - TypeScript functions with type annotations
+  - Generic functions (`<T>`)
   
 - **🧠 Intelligent Code Analysis**: 
   - Normalizes code to ignore irrelevant differences (whitespace, comments, variable names)
+  - Automatically removes TypeScript type annotations for semantic comparison
   - Uses Levenshtein distance algorithm for accurate similarity scoring
   - Configurable similarity threshold (default 70%)
 
@@ -52,7 +55,7 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
 - **⚡ Performance**:
   - Recursively scans entire project directories
   - Automatically skips `node_modules`, `.git`, `dist`, and `build` folders
-  - Handles both `.js` and `.jsx` files
+  - Handles `.js`, `.jsx`, `.ts`, and `.tsx` files
 
 - **🔧 Zero Configuration**: Works out of the box with sensible defaults
 
@@ -114,7 +117,7 @@ find-duplicate . 75
 🚀 Searching for duplicate code in: ./src
 📏 Similarity threshold: 70%
 
-🔍 Scanning 15 JavaScript files...
+🔍 Scanning 15 JavaScript/TypeScript files...
 
 📊 Found 42 functions total
 
@@ -177,7 +180,7 @@ The web interface will:
 ## 🔧 How It Works
 
 ### 1. **File Discovery**
-Recursively scans your project directory and finds all `.js` and `.jsx` files, while intelligently skipping:
+Recursively scans your project directory and finds all `.js`, `.jsx`, `.ts`, and `.tsx` files, while intelligently skipping:
 - `node_modules`
 - `.git`
 - `dist`
@@ -189,27 +192,39 @@ Uses sophisticated regex patterns to identify and extract:
 - Traditional function declarations
 - Class and object methods
 - Async functions
+- TypeScript functions with type annotations
+- Generic functions with type parameters
 
 ### 3. **Code Normalization**
 Before comparison, the code is normalized to focus on logic rather than style:
 - Removes all whitespace and line breaks
 - Strips comments (single-line and multi-line)
+- Removes TypeScript type annotations and generic parameters
 - Replaces variable names with generic placeholders
 - Replaces string literals with generic strings
 - Removes template literals
 
 **Example:**
 ```javascript
-// Original Code
+// Original JavaScript Code
 function calculateSum(num1, num2) {
   // Calculate sum of two numbers
   const result = num1 + num2;
   return result;
 }
 
-// Normalized Code
+// Original TypeScript Code
+function calculateSum(num1: number, num2: number): number {
+  // Calculate sum of two numbers
+  const result: number = num1 + num2;
+  return result;
+}
+
+// Both Normalized to
 V(){V=V+V;V;}
 ```
+
+This allows the tool to recognize that TypeScript and JavaScript versions of the same function are duplicates!
 
 ### 4. **Similarity Calculation**
 Uses the **Levenshtein Distance** algorithm to calculate how similar two functions are:
@@ -256,6 +271,53 @@ find-duplicate ./src 50
 - **70-89%**: Very similar logic with minor variations
 - **50-69%**: Similar patterns but with notable differences
 - **Below 50%**: May produce many false positives
+
+## 🎯 TypeScript Support
+
+Find Duplicate JS now fully supports TypeScript! The tool intelligently handles TypeScript-specific syntax:
+
+### Supported TypeScript Features
+
+- ✅ **Type Annotations**: Function parameters, return types, and variable types
+- ✅ **Interfaces and Type Aliases**: Automatically filtered during normalization
+- ✅ **Generics**: Generic type parameters (`<T>`, `<T extends U>`)
+- ✅ **Type Assertions**: `as` keyword syntax
+- ✅ **Access Modifiers**: `public`, `private`, `protected`
+- ✅ **Optional Parameters**: `param?: type`
+- ✅ **Union and Intersection Types**: `type1 | type2`, `type1 & type2`
+
+### How It Works
+
+The tool normalizes TypeScript code by removing all type information, allowing it to detect duplicates regardless of whether they're written in JavaScript or TypeScript:
+
+```typescript
+// TypeScript version
+function fetchUser(id: string): Promise<User> {
+  return api.get<User>(`/users/${id}`);
+}
+
+// JavaScript version  
+function getUserData(userId) {
+  return api.get(`/users/${userId}`);
+}
+
+// Both will be detected as similar! ✅
+```
+
+### Mixed Projects
+
+Works seamlessly in projects that contain both JavaScript and TypeScript:
+
+```bash
+# Analyze a mixed JS/TS project
+find-duplicate ./src
+
+# Files analyzed:
+# ✅ .js files
+# ✅ .jsx files  
+# ✅ .ts files
+# ✅ .tsx files
+```
 
 ## 📚 Examples
 

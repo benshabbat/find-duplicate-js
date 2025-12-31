@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2025-12-31
+
+### 🎉 Major New Features
+
+#### TypeScript Support
+- **File Support**: Now scans and analyzes `.ts` and `.tsx` files in addition to `.js` and `.jsx`
+- **Type Annotation Handling**: Automatically removes TypeScript type annotations during normalization
+  - Function parameter types (e.g., `param: string`)
+  - Return type annotations (e.g., `: Promise<User>`)
+  - Generic type parameters (e.g., `<T>`, `<T extends U>`)
+  - Type assertions (e.g., `as string`)
+  - Interface and type alias declarations
+- **Access Modifiers**: Recognizes TypeScript access modifiers (`public`, `private`, `protected`, `static`)
+- **Cross-Language Detection**: Can identify duplicates between JavaScript and TypeScript code
+  - A TypeScript function and its JavaScript equivalent will be detected as duplicates
+  - Type information is normalized away to focus on logical similarity
+
+### ✨ Improvements
+- **Enhanced Pattern Matching**: Improved regex patterns to handle TypeScript syntax
+- **Better Code Normalization**: More sophisticated normalization that preserves code logic while removing type information
+- **Updated Documentation**: Added comprehensive TypeScript support section in README
+
+### 📚 Examples
+```typescript
+// TypeScript function
+function add(a: number, b: number): number {
+  return a + b;
+}
+
+// JavaScript function - detected as duplicate!
+function sum(x, y) {
+  return x + y;
+}
+```
+
 ## [1.3.1] - 2025-12-31
 
 ### 📝 Changes
