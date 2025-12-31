@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2025-12-31
+
+### 🚀 New Features
+
+#### Unified CLI with --ui Flag
+- **Single Command**: No need for separate `find-duplicates-ui` command
+- **--ui Flag**: Add `--ui` flag to launch web interface from main command
+  - Example: `find-duplicates --ui ./src 80`
+- **Backwards Compatible**: `find-duplicates-ui` command still works
+- **Updated npm Scripts**: `npm run ui` now uses the `--ui` flag
+
+### ✨ Improvements
+- **Simplified Usage**: One command for both CLI and UI modes
+- **Better UX**: More intuitive flag-based interface
+- **Cleaner Architecture**: UI server code integrated into main file
+
 ## [1.2.0] - 2025-12-31
 
 ### 🚀 New Features
