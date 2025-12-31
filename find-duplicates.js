@@ -54,3 +54,6 @@ const result = findDuplicates(directory, threshold);
 console.log(`📊 Found ${result.totalFunctions} functions total\n`);
 
 displayResults(result);
+
+// Export functions for programmatic use
+export { findDuplicates, findJsFiles, extractFunctions, normalizeCode, calculateSimilarity } from './find-duplicates-core.js';

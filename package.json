@@ -42,6 +42,8 @@
     "find-duplicates.js",
     "find-duplicates-core.js",
     "find-duplicates-ui.js",
+    "ui-template.html",
+    "ui-styles.css",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

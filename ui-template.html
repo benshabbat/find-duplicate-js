@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Duplicate Finder</title>
+    <link rel="stylesheet" href="ui-styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 JavaScript Duplicate Finder</h1>
+            <p>Intelligent code duplication detection</p>
+            <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Analysis</button>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="number">{{filesScanned}}</div>
+                <div class="label">Files Scanned</div>
+            </div>
+            <div class="stat-card">
+                <div class="number">{{functionsFound}}</div>
+                <div class="label">Functions Found</div>
+            </div>
+            <div class="stat-card">
+                <div class="number">{{duplicatesFound}}</div>
+                <div class="label">Duplicate Pairs</div>
+            </div>
+            <div class="stat-card">
+                <div class="number">{{threshold}}%</div>
+                <div class="label">Threshold</div>
+            </div>
+        </div>
+        
+        <div id="results">
+            <!-- Results will be injected here -->
+        </div>
+    </div>
+    
+    <script>
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
