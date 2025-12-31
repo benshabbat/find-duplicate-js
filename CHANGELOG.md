@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2025-12-31
+
+### 🚀 New Features
+
+#### Programmatic API Support
+- **Export Functions**: Package now exports core functions for programmatic use
+  - `findDuplicates` - Main function to find duplicate code
+  - `findJsFiles` - Find all JavaScript files in a directory
+  - `extractFunctions` - Extract functions from code
+  - `normalizeCode` - Normalize code for comparison
+  - `calculateSimilarity` - Calculate similarity between code snippets
+- **Usage Example**:
+  ```javascript
+  import { findDuplicates, findJsFiles } from 'find-duplicate-js';
+  
+  const result = findDuplicates('./src', 70);
+  console.log(result);
+  ```
+
+### ✨ Improvements
+
+#### UI Code Refactoring
+- **Separated Concerns**: Split HTML, CSS, and JavaScript into separate files
+  - `ui-template.html` - HTML structure
+  - `ui-styles.css` - All styling
+  - `find-duplicates-ui.js` - Logic only
+- **Better Maintainability**: Easier to update and customize the UI
+- **Cleaner Code**: More readable and organized codebase
+
+### 🐛 Bug Fixes
+- Fixed module export issue that prevented importing functions from the package
+- Resolved "does not provide an export named 'findDuplicates'" error
+
 ## [1.1.0] - 2025-12-30
 
 ### 🐛 Bug Fixes
