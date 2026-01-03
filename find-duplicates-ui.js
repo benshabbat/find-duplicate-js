@@ -57,16 +57,16 @@ function generateHTML(duplicates, stats) {
                   <div class="function-comparison">
                       <div class="function-info">
                           <h4>Function 1</h4>
-                          <div class="file-path">📁 ${dup.func1.filePath}</div>
-                          <div class="function-name">${dup.func1.name}()</div>
+                          <div class="file-path clickable" onclick="openFile('${dup.func1.filePath.replace(/\\/g, '\\\\')}', ${dup.func1.line || 1})">📁 ${dup.func1.filePath}</div>
+                          <div class="function-name clickable" onclick="openFile('${dup.func1.filePath.replace(/\\/g, '\\\\')}', ${dup.func1.line || 1})">${dup.func1.name}()</div>
                           <div class="code-preview">${escapeHtml(
                             dup.func1.originalBody.substring(0, 200)
                           )}${dup.func1.originalBody.length > 200 ? "..." : ""}</div>
                       </div>
                       <div class="function-info">
                           <h4>Function 2</h4>
-                          <div class="file-path">📁 ${dup.func2.filePath}</div>
-                          <div class="function-name">${dup.func2.name}()</div>
+                          <div class="file-path clickable" onclick="openFile('${dup.func2.filePath.replace(/\\/g, '\\\\')}', ${dup.func2.line || 1})">📁 ${dup.func2.filePath}</div>
+                          <div class="function-name clickable" onclick="openFile('${dup.func2.filePath.replace(/\\/g, '\\\\')}', ${dup.func2.line || 1})">${dup.func2.name}()</div>
                           <div class="code-preview">${escapeHtml(
                             dup.func2.originalBody.substring(0, 200)
                           )}${dup.func2.originalBody.length > 200 ? "..." : ""}</div>
@@ -132,6 +132,40 @@ const server = http.createServer((req, res) => {
       console.error("❌ Error:", error);
       res.writeHead(500, { "Content-Type": "text/html" });
       res.end(`<h1>Error</h1><pre>${error.message}</pre>`);
+    }
+  } else if (req.url.startsWith("/open-file?")) {
+    // Handle file opening requests
+    try {
+      const params = new URLSearchParams(req.url.split("?")[1]);
+      const filePath = params.get("path");
+      const line = params.get("line") || "1";
+      
+      if (filePath) {
+        // Open file in VSCode using 'code' command
+        // The filePath from findDuplicates is already absolute
+        const absolutePath = path.resolve(filePath);
+        const command = `code --goto "${absolutePath}:${line}"`;
+        
+        console.log(`📂 Opening: ${absolutePath}:${line}`);
+        
+        open(command, (error) => {
+          if (error) {
+            console.error("❌ Error opening file:", error);
+          } else {
+            console.log("✅ File opened successfully");
+          }
+        });
+        
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("File opened in VSCode");
+      } else {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Missing file path");
+      }
+    } catch (error) {
+      console.error("❌ Error opening file:", error);
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end(`Error: ${error.message}`);
     }
   } else {
     res.writeHead(404);

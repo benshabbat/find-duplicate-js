@@ -44,6 +44,18 @@
             div.textContent = text;
             return div.innerHTML;
         }
+        
+        function openFile(filePath, line) {
+            fetch(`/open-file?path=${encodeURIComponent(filePath)}&line=${line}`)
+                .then(response => {
+                    if (response.ok) {
+                        console.log('File opened in VSCode');
+                    } else {
+                        console.error('Failed to open file');
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
     </script>
 </body>
 </html>

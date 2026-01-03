@@ -149,6 +149,16 @@ body {
     word-break: break-all;
 }
 
+.file-path.clickable {
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.file-path.clickable:hover {
+    color: #667eea;
+    text-decoration: underline;
+}
+
 .function-name {
     font-family: 'Courier New', monospace;
     background: #e3f2fd;
@@ -158,6 +168,18 @@ body {
     margin-bottom: 15px;
     color: #1976d2;
     font-weight: bold;
+}
+
+.function-name.clickable {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.function-name.clickable:hover {
+    background: #667eea;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .code-preview {
