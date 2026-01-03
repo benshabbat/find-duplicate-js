@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { extractFunctions, normalizeCode, calculateSimilarity } from '../find-duplicates-core.js';
+import { extractFunctions, normalizeCode, calculateSimilarity, extractJSXComponents } from '../find-duplicates-core.js';
 
 /**
  * Tests for TypeScript support in find-duplicate-js
@@ -433,6 +433,158 @@ test('should handle function type parameters', () => {
   
   assert.strictEqual(functions.length, 1, 'Should extract one function');
   assert.strictEqual(functions[0].name, 'execute', 'Function name should be execute');
+});
+
+// =============================================================================
+// JSX/TSX Component Tests
+// =============================================================================
+
+test('should extract JSX components from React code', () => {
+  const code = `
+    return (
+      <div>
+        <Button onClick={handleClick}>Click me</Button>
+        <UserCard user={currentUser} />
+      </div>
+    );
+  `;
+  
+  const components = extractJSXComponents(code);
+  
+  assert.ok(components.has('Button'), 'Should find Button component');
+  assert.ok(components.has('UserCard'), 'Should find UserCard component');
+  assert.strictEqual(components.size, 2, 'Should find 2 components');
+});
+
+test('should not detect JSX templates with different components as duplicates', () => {
+  const code1 = `
+    const Component1 = () => {
+      return (
+        <div>
+          <Button>Click</Button>
+          <Input value={text} />
+        </div>
+      );
+    };
+  `;
+  
+  const code2 = `
+    const Component2 = () => {
+      return (
+        <div>
+          <Card>Content</Card>
+          <Image src={url} />
+        </div>
+      );
+    };
+  `;
+  
+  const functions1 = extractFunctions(code1, 'comp1.tsx');
+  const functions2 = extractFunctions(code2, 'comp2.tsx');
+  
+  assert.strictEqual(functions1.length, 1, 'Should extract first component');
+  assert.strictEqual(functions2.length, 1, 'Should extract second component');
+  
+  const similarity = calculateSimilarity(
+    functions1[0].body, 
+    functions2[0].body,
+    functions1[0].jsxComponents,
+    functions2[0].jsxComponents
+  );
+  
+  // Should have low similarity because components are completely different
+  assert.ok(similarity < 40, `Similarity should be < 40% for different components, got ${similarity}%`);
+});
+
+test('should detect JSX templates with same components as similar', () => {
+  const code1 = `
+    const Component1 = () => {
+      return (
+        <div>
+          <Button onClick={handleClick}>Submit</Button>
+          <Input value={name} />
+        </div>
+      );
+    };
+  `;
+  
+  const code2 = `
+    const Component2 = () => {
+      return (
+        <div>
+          <Button onClick={handleSave}>Save</Button>
+          <Input value={email} />
+        </div>
+      );
+    };
+  `;
+  
+  const functions1 = extractFunctions(code1, 'comp1.tsx');
+  const functions2 = extractFunctions(code2, 'comp2.tsx');
+  
+  const similarity = calculateSimilarity(
+    functions1[0].body, 
+    functions2[0].body,
+    functions1[0].jsxComponents,
+    functions2[0].jsxComponents
+  );
+  
+  // Should have high similarity because same components are used
+  assert.ok(similarity > 70, `Similarity should be > 70% for same components, got ${similarity}%`);
+});
+
+test('should handle mixed JSX components (some common, some different)', () => {
+  const code1 = `
+    const Component1 = () => {
+      return (
+        <div>
+          <Button>Click</Button>
+          <Input value={text} />
+          <Form onSubmit={handleSubmit} />
+        </div>
+      );
+    };
+  `;
+  
+  const code2 = `
+    const Component2 = () => {
+      return (
+        <div>
+          <Button>Save</Button>
+          <TextArea value={content} />
+          <Form onSubmit={handleSave} />
+        </div>
+      );
+    };
+  `;
+  
+  const functions1 = extractFunctions(code1, 'comp1.tsx');
+  const functions2 = extractFunctions(code2, 'comp2.tsx');
+  
+  const similarity = calculateSimilarity(
+    functions1[0].body, 
+    functions2[0].body,
+    functions1[0].jsxComponents,
+    functions2[0].jsxComponents
+  );
+  
+  // Should have moderate to high similarity (Button and Form are common - 50% overlap)
+  // With 50% component overlap and identical structure, similarity should be 70-90%
+  assert.ok(similarity > 70 && similarity < 95, `Similarity should be high-moderate (70-95%), got ${similarity}%`);
+});
+
+test('should ignore JSX for non-JSX files', () => {
+  const code = `
+    function regularFunction() {
+      const message = "Not JSX";
+      return message;
+    }
+  `;
+  
+  const functions = extractFunctions(code, 'regular.js');
+  
+  assert.strictEqual(functions.length, 1, 'Should extract function');
+  assert.strictEqual(functions[0].jsxComponents.size, 0, 'Should have no JSX components for .js files');
 });
 
 console.log('✅ All TypeScript support tests configured');

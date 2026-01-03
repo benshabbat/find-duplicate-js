@@ -2,6 +2,57 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-01-03
+
+### 🎉 Major New Features
+
+#### Improved JSX/TSX Template Detection
+- **Smart Component Analysis**: Now extracts and compares JSX component names to avoid false positives
+- **Component-Based Similarity**: Templates with different component names are no longer flagged as duplicates
+  - Functions using `<Button>` and `<Input>` vs `<Card>` and `<Image>` are now correctly identified as different
+  - Similarity score is reduced by 70% when components are completely different
+  - Partial component overlap is weighted proportionally (30% weight for component similarity)
+- **Intelligent Normalization**: JSX component names are normalized to `COMP` placeholder while tracking actual components used
+
+### ✨ Improvements
+- **Better JSX Detection**: Automatically detects JSX in code, not just based on file extension
+- **Reduced False Positives**: Significantly reduces duplicate detection in React/JSX codebases where templates have similar structure but use different components
+- **Enhanced Testing**: Added 5 new tests specifically for JSX/TSX component handling
+
+### 📚 Examples
+```tsx
+// Component 1 - uses Button and Input
+const Form1 = () => {
+  return (
+    <div>
+      <Button onClick={handleClick}>Submit</Button>
+      <Input value={name} />
+    </div>
+  );
+};
+
+// Component 2 - uses Card and Image
+const Form2 = () => {
+  return (
+    <div>
+      <Card>Content</Card>
+      <Image src={url} />
+    </div>
+  );
+};
+
+// Result: NOT detected as duplicates (30% similarity)
+// Because the components are completely different
+```
+
+### 🔧 Technical Details
+- Added `extractJSXComponents()` function to identify component usage
+- Modified `calculateSimilarity()` to accept JSX component sets as parameters
+- Updated `extractFunctions()` to track JSX components per function
+- Component comparison logic:
+  - 0 common components = 70% similarity reduction
+  - Partial overlap = weighted calculation (70% code + 30% components)
+
 ## [1.4.0] - 2025-12-31
 
 ### 🎉 Major New Features

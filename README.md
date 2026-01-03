@@ -304,6 +304,59 @@ function getUserData(userId) {
 // Both will be detected as similar! ✅
 ```
 
+## 🎨 JSX/TSX Smart Detection
+
+**New in v1.5.0:** Intelligent handling of React components to avoid false positives!
+
+### The Problem
+
+Before v1.5.0, JSX templates with similar structure but different components were incorrectly flagged as duplicates:
+
+```tsx
+// Component 1
+const FormA = () => (
+  <div>
+    <Button>Submit</Button>
+    <Input value={name} />
+  </div>
+);
+
+// Component 2
+const FormB = () => (
+  <div>
+    <Card>Content</Card>
+    <Image src={url} />
+  </div>
+);
+
+// ❌ Old behavior: 100% duplicate (false positive!)
+```
+
+### The Solution
+
+The tool now extracts and compares JSX component names:
+
+- **Different components** → Low similarity (30%)
+- **Same components** → High similarity (70-100%)
+- **Partial overlap** → Weighted calculation
+
+```tsx
+// Example Results:
+// Button + Input vs Card + Image = 30% (different components)
+// Button + Input vs Button + Input = 100% (same components)
+// Button + Form vs Button + TextArea = 85% (50% overlap)
+```
+
+### How Component Analysis Works
+
+1. **Extract Components**: Identifies all JSX components (capitalized tags like `<Button>`, `<UserCard>`)
+2. **Compare Sets**: Calculates overlap between component sets
+3. **Adjust Similarity**: 
+   - No overlap = 70% reduction in similarity
+   - Partial overlap = weighted calculation (70% code structure + 30% component similarity)
+
+This ensures that templates with truly different purposes aren't flagged as duplicates, while still catching actual code duplication.
+
 ### Mixed Projects
 
 Works seamlessly in projects that contain both JavaScript and TypeScript:

@@ -200,12 +200,19 @@ function extractFunctions(code, filePath) {
       
       if (!functionPositions.has(uniqueKey)) {
         functionPositions.set(uniqueKey, true);
+        
+        // Extract JSX components from original body (before normalization)
+        // Check file extension OR check if code contains JSX
+        const hasJSX = filePath.endsWith('.jsx') || filePath.endsWith('.tsx') || body.includes('<');
+        const jsxComponents = hasJSX ? extractJSXComponents(body) : new Set();
+        
         functions.push({
           name: funcMatch.name,
           body: normalizedBody,
           originalBody: body,
           filePath,
-          startIndex: funcMatch.start
+          startIndex: funcMatch.start,
+          jsxComponents: jsxComponents
         });
       }
     }
@@ -270,6 +277,27 @@ function extractFunctionBody(code, startBrace) {
 }
 
 /**
+ * Extracts JSX/TSX component names from code
+ * @param {string} code - The JavaScript/TypeScript/JSX/TSX code
+ * @returns {Set<string>} Set of unique component names used in JSX
+ * @description Identifies JSX component tags (e.g., <Button>, <UserCard>) in the code
+ */
+function extractJSXComponents(code) {
+  const components = new Set();
+  
+  // Match JSX opening tags: <ComponentName ...> or <ComponentName/>
+  // Component names start with uppercase letter
+  const jsxPattern = /<([A-Z][a-zA-Z0-9]*)[\s/>]/g;
+  let match;
+  
+  while ((match = jsxPattern.exec(code)) !== null) {
+    components.add(match[1]);
+  }
+  
+  return components;
+}
+
+/**
  * Normalizes code for comparison by removing irrelevant differences
  * @param {string} code - The JavaScript/TypeScript code to normalize
  * @returns {string} Normalized code with whitespace, comments, type annotations, and variable names removed
@@ -283,6 +311,10 @@ function normalizeCode(code) {
     .replace(/`[^`]*`/g, '""') // Replace template literals with generic string
     .replace(/'[^']*'/g, '""') // Replace string literals with generic string
     .replace(/"[^"]*"/g, '""') // Replace string literals with generic string
+    // JSX/TSX specific: Replace JSX component names with generic placeholder
+    // This handles <ComponentName> tags, but we need to preserve the structure
+    .replace(/<([A-Z][a-zA-Z0-9]*)/g, '<COMP') // Replace opening tags
+    .replace(/\/([A-Z][a-zA-Z0-9]*)>/g, '/COMP>') // Replace closing tags
     // TypeScript specific: Remove type annotations
     .replace(/:\s*[a-zA-Z_$<>[\]{}|&,\s]+(?=\s*[=,)\]};])/g, '') // Remove type annotations (e.g., : string, : number[], : Array<T>)
     .replace(/:\s*[a-zA-Z_$<>[\]{}|&,\s]+$/gm, '') // Remove type annotations at end of line
@@ -301,12 +333,13 @@ function normalizeCode(code) {
  * Calculates the similarity between two code snippets as a percentage
  * @param {string} code1 - First code snippet
  * @param {string} code2 - Second code snippet
+ * @param {Set<string>} components1 - JSX components in first snippet (optional)
+ * @param {Set<string>} components2 - JSX components in second snippet (optional)
  * @returns {number} Similarity percentage (0-100)
- * @description Uses Levenshtein distance algorithm to measure code similarity
+ * @description Uses Levenshtein distance algorithm to measure code similarity.
+ * For JSX/TSX: reduces similarity if components are completely different.
  */
-function calculateSimilarity(code1, code2) {
-  if (code1 === code2) return 100;
-  
+function calculateSimilarity(code1, code2, components1 = new Set(), components2 = new Set()) {
   const len1 = code1.length;
   const len2 = code2.length;
   const maxLen = Math.max(len1, len2);
@@ -315,7 +348,26 @@ function calculateSimilarity(code1, code2) {
   
   // Use simple Levenshtein distance
   const distance = levenshteinDistance(code1, code2);
-  const similarity = ((maxLen - distance) / maxLen) * 100;
+  let similarity = ((maxLen - distance) / maxLen) * 100;
+  
+  // JSX/TSX specific: If both have JSX components, check if they're different
+  if (components1.size > 0 && components2.size > 0) {
+    // Find common components
+    const commonComponents = new Set([...components1].filter(c => components2.has(c)));
+    
+    // If there are NO common components, this is likely a different template
+    // Reduce similarity significantly
+    if (commonComponents.size === 0) {
+      similarity = similarity * 0.3; // Reduce by 70%
+    } else {
+      // If some components are common, reduce proportionally
+      const totalUniqueComponents = new Set([...components1, ...components2]).size;
+      const componentSimilarity = (commonComponents.size / totalUniqueComponents);
+      
+      // Apply component similarity as a factor (weight it 30%)
+      similarity = similarity * 0.7 + (componentSimilarity * 100 * 0.3);
+    }
+  }
   
   return similarity;
 }
@@ -441,7 +493,13 @@ function findDuplicates(directory, similarityThreshold = 70) {
       if (similarityCache.has(cacheKey)) {
         similarity = similarityCache.get(cacheKey);
       } else {
-        similarity = calculateSimilarity(func1.body, func2.body);
+        // Pass JSX component info for better comparison
+        similarity = calculateSimilarity(
+          func1.body, 
+          func2.body,
+          func1.jsxComponents || new Set(),
+          func2.jsxComponents || new Set()
+        );
         similarityCache.set(cacheKey, similarity);
       }
 
@@ -466,5 +524,6 @@ export {
   normalizeCode,
   calculateSimilarity,
   findJsFiles,
-  findDuplicates
+  findDuplicates,
+  extractJSXComponents
 };
