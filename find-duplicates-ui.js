@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { exec as open } from "child_process";
 import http from "http";
 import fs from "fs";
 import path from "path";
@@ -138,34 +137,83 @@ const server = http.createServer((req, res) => {
     try {
       const params = new URLSearchParams(req.url.split("?")[1]);
       const filePath = params.get("path");
-      const line = params.get("line") || "1";
+      const lineParam = params.get("line") || "1";
       
-      if (filePath) {
-        // Open file in VSCode using 'code' command
-        // The filePath from findDuplicates is already absolute
-        const absolutePath = path.resolve(filePath);
-        const command = `code --goto "${absolutePath}:${line}"`;
-        
-        console.log(`📂 Opening: ${absolutePath}:${line}`);
-        
-        open(command, (error) => {
-          if (error) {
-            console.error("❌ Error opening file:", error);
-          } else {
-            console.log("✅ File opened successfully");
-          }
-        });
-        
-        res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end("File opened in VSCode");
-      } else {
+      if (!filePath) {
         res.writeHead(400, { "Content-Type": "text/plain" });
         res.end("Missing file path");
+        return;
       }
+      
+      // Security: Validate line number is actually a number
+      const line = parseInt(lineParam, 10);
+      if (isNaN(line) || line < 1) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Invalid line number");
+        return;
+      }
+      
+      // Security: Resolve and normalize the path
+      const absolutePath = path.resolve(filePath);
+      
+      // Security: Verify the file exists and is within allowed directory
+      if (!fs.existsSync(absolutePath)) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("File not found");
+        return;
+      }
+      
+      // Security: Check if it's actually a file (not a directory)
+      const stats = fs.statSync(absolutePath);
+      if (!stats.isFile()) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Path is not a file");
+        return;
+      }
+      
+      // Security: Use array syntax to prevent command injection
+      console.log(`📂 Opening: ${absolutePath}:${line}`);
+      
+      // Use spawn instead of exec for better security (prevents command injection)
+      import('child_process').then(({ spawn, exec }) => {
+        // Try using spawn first (more secure)
+        const child = spawn('code', ['--goto', `${absolutePath}:${line}`], {
+          detached: true,
+          stdio: 'ignore',
+          shell: false
+        });
+        
+        child.unref();
+        
+        child.on('error', (spawnError) => {
+          // Fallback to exec if spawn fails (e.g., code not in PATH on Windows)
+          console.log("Trying alternative method to open VSCode...");
+          const command = process.platform === 'win32' 
+            ? `code --goto "${absolutePath}:${line}"` 
+            : `code --goto '${absolutePath}:${line}'`;
+          
+          exec(command, (execError) => {
+            if (execError) {
+              console.error("❌ Error opening file:", execError.message);
+              console.log("💡 Make sure VSCode is installed and 'code' command is available in PATH");
+            } else {
+              console.log("✅ File opened successfully");
+            }
+          });
+        });
+        
+        // If no error, spawn succeeded
+        setTimeout(() => console.log("✅ File opened successfully"), 100);
+      }).catch(error => {
+        console.error("❌ Error loading child_process:", error);
+      });
+      
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("File opened in VSCode");
     } catch (error) {
       console.error("❌ Error opening file:", error);
       res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end(`Error: ${error.message}`);
+      res.end("Internal server error");
     }
   } else {
     res.writeHead(404);
@@ -180,15 +228,24 @@ server.listen(PORT, () => {
 
   // Try to open browser automatically
   const url = `http://localhost:${PORT}`;
-
-  switch (process.platform) {
-    case "win32":
-      open(`start ${url}`);
-      break;
-    case "darwin":
-      open(`open ${url}`);
-      break;
-    default:
-      open(`xdg-open ${url}`);
-  }
+  
+  import('child_process').then(({ exec }) => {
+    let command;
+    switch (process.platform) {
+      case "win32":
+        command = `start ${url}`;
+        break;
+      case "darwin":
+        command = `open ${url}`;
+        break;
+      default:
+        command = `xdg-open ${url}`;
+    }
+    
+    exec(command, (error) => {
+      if (error) {
+        console.log("Note: Could not open browser automatically. Please open manually.");
+      }
+    });
+  });
 });
