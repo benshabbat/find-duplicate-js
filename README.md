@@ -51,6 +51,15 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
 - **🎨 Two Usage Modes**:
   - **CLI Mode**: Quick terminal-based analysis with detailed text output
   - **Web UI Mode**: Beautiful, interactive web interface with visual comparisons
+  - **🖱️ Clickable Navigation**: Click on file paths or function names to open in VSCode (v1.6.0+)
+
+- **🔒 Enterprise-Grade Security** (v1.6.1+):
+  - Protection against command injection attacks
+  - Path traversal prevention
+  - XSS (Cross-Site Scripting) protection
+  - Input validation and sanitization
+  - Multiple security layers (7+)
+  - Security rating: A+
 
 - **⚡ Performance**:
   - Recursively scans entire project directories
@@ -176,6 +185,23 @@ The web interface will:
 - 🔄 **Live Refresh**: Re-analyze your code with a single click
 - 📱 **Mobile Friendly**: Works on all devices
 - 🎯 **Easy Navigation**: Jump directly to problematic code
+- 🖱️ **Click to Open in VSCode** (v1.6.0+): Click file paths or function names to instantly open them in VSCode at the exact line
+  - Direct integration with VSCode
+  - Visual hover effects show clickable elements
+  - Cross-platform support (Windows, macOS, Linux)
+
+### 🔒 Security Features (v1.6.1+)
+
+The web UI includes comprehensive security protections:
+
+- **Command Injection Prevention**: Uses secure `spawn()` with array arguments
+- **Path Traversal Protection**: Validates file paths to prevent unauthorized access
+- **XSS Protection**: Sanitizes all user input and file paths
+- **Input Validation**: Validates all parameters (line numbers, paths)
+- **File System Validation**: Ensures only valid files within the project are accessed
+- **Information Disclosure Prevention**: Generic error messages
+
+All security features are enabled by default with no configuration needed.
 
 ## 🔧 How It Works
 

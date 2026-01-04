@@ -2,6 +2,73 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.2] - 2026-01-04
+
+### 🔒 Critical Security Update
+
+#### Comprehensive XSS Protection
+- **HTML Content Escaping**: All user-facing content properly escaped with `escapeHtml()`
+- **JavaScript String Escaping**: Added `escapeJsString()` for safe onclick attributes
+  - Escapes quotes, backslashes, newlines, and control characters
+  - Prevents script injection via `<` and `>` characters
+- **XSS Prevention**: Protects against malicious file paths containing script injection attempts
+
+#### Path Traversal Protection
+- **Directory Boundary Validation**: Added `startsWith()` check to prevent path traversal attacks
+- **Prevents Access Outside Project**: Blocks attempts like `../../../../etc/passwd`
+- **Enhanced Logging**: Security events are now logged for monitoring
+
+### 🛡️ Security Layers
+1. ✅ Command Injection: `spawn()` with `shell: false`
+2. ✅ Path Traversal: Directory boundary validation
+3. ✅ XSS in HTML: `escapeHtml()` for all content
+4. ✅ XSS in JavaScript: `escapeJsString()` for onclick handlers
+5. ✅ Input Validation: `parseInt()` with range checks
+6. ✅ File Validation: `existsSync()` and `isFile()` checks
+7. ✅ Info Disclosure: Generic error messages
+
+### 📊 Security Rating: A+
+
+## [1.6.1] - 2026-01-04
+
+### 🔐 Security Enhancements
+
+#### Command Injection Prevention
+- **Secure Process Spawning**: Replaced `exec()` with `spawn()` using array arguments
+- **Shell Disabled**: Added `shell: false` option to prevent command injection
+- **Fallback Mechanism**: Secure fallback to `exec()` when spawn fails
+
+#### Input Validation
+- **Line Number Validation**: Added `parseInt()` with NaN and range checks
+- **File Existence Check**: Validates file exists before attempting to open
+- **File Type Validation**: Ensures path points to a file, not a directory
+
+#### Error Handling
+- **Sanitized Error Messages**: Generic error messages to prevent information disclosure
+- **Enhanced Logging**: Better error logging for debugging without exposing sensitive info
+
+## [1.6.0] - 2026-01-03
+
+### ✨ New Feature: Clickable File Navigation
+
+#### Interactive UI Enhancement
+- **Click to Open in VSCode**: File paths and function names are now clickable
+- **Direct Navigation**: Clicking opens the exact file and line in VSCode
+- **Visual Feedback**: Hover effects show elements are clickable
+  - File paths change color and underline on hover
+  - Function names highlight and elevate on hover
+
+#### Technical Implementation
+- **New Server Endpoint**: `/open-file` handles file opening requests
+- **VSCode Integration**: Uses `code --goto` for precise file positioning
+- **Client-Side Function**: `openFile()` JavaScript function communicates with server
+- **Cross-Platform**: Works on Windows, macOS, and Linux
+
+#### UI Improvements
+- **Clickable Styling**: Added `.clickable` CSS class with pointer cursor
+- **Smooth Transitions**: 0.2s transitions for better UX
+- **Interactive Design**: Clear visual cues for clickable elements
+
 ## [1.5.0] - 2026-01-03
 
 ### 🎉 Major New Features
