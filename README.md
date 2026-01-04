@@ -18,6 +18,16 @@ A powerful and intelligent tool to detect duplicate and similar code in JavaScri
 - [Configuration Options](#configuration-options)
 - [Examples](#examples)
 - [API](#api)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [Links](#links)
+- [License](#license)
+  - [Web UI Mode](#web-ui-mode)
+- [How It Works](#how-it-works)
+- [Configuration Options](#configuration-options)
+- [Examples](#examples)
+- [API](#api)
 - [Contributing](#contributing)
 - [Links](#links)
 - [License](#license)
@@ -497,6 +507,160 @@ Calculates similarity percentage between two code strings.
 
 #### `normalizeCode(code)`
 Normalizes JavaScript code for comparison.
+
+## 🔧 Troubleshooting
+
+### Clickable File Paths Not Working (v1.6.0+)
+
+If you don't see hover effects or can't click on file paths:
+
+**1. Check Your Version**
+```bash
+find-duplicate --version
+# Should show 1.6.0 or higher
+```
+
+**2. Update to Latest Version**
+```bash
+npm update -g find-duplicate-js
+# or
+npm install -g find-duplicate-js@latest
+```
+
+**3. Clear Browser Cache**
+- Press `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac) to hard refresh
+- Or clear your browser cache manually
+
+**4. Verify VSCode CLI is Installed**
+```bash
+code --version
+```
+If not found, install VSCode and add it to PATH:
+- Windows: Reinstall VSCode and check "Add to PATH" during installation
+- Mac: Open VSCode, press `Cmd+Shift+P`, type "Shell Command: Install 'code' command in PATH"
+- Linux: Usually installed automatically with VSCode
+
+**5. Check Server Logs**
+Look for these messages in the terminal:
+```
+📂 Attempting to open: /path/to/file.js:10
+✅ File opened successfully
+```
+
+If you see errors, they might indicate:
+- `File not found` - The file path is incorrect
+- `Path traversal attempt blocked` - Security protection triggered (shouldn't happen with legitimate files)
+- `spawn code ENOENT` - VSCode CLI not in PATH
+
+### Web UI Not Loading
+
+**1. Port Already in Use**
+If port 2712 is busy:
+```bash
+# Find and kill the process using port 2712
+# Windows:
+netstat -ano | findstr :2712
+taskkill /PID <PID> /F
+
+# Mac/Linux:
+lsof -ti:2712 | xargs kill -9
+```
+
+**2. Browser Not Opening Automatically**
+Manually navigate to: `http://localhost:2712`
+
+### General Issues
+
+**"Module not found" Error**
+```bash
+# Reinstall the package
+npm uninstall -g find-duplicate-js
+npm install -g find-duplicate-js
+```
+
+**Permission Errors (Mac/Linux)**
+```bash
+sudo npm install -g find-duplicate-js
+```
+
+## ❓ FAQ
+
+### Q: Why can't I see the hover effects on file paths?
+**A:** You need version 1.6.0 or higher. Update with:
+```bash
+npm install -g find-duplicate-js@latest
+```
+Then clear your browser cache (Ctrl+Shift+R or Cmd+Shift+R).
+
+### Q: Clicking on file paths doesn't open VSCode. What's wrong?
+**A:** Make sure VSCode CLI is installed and in your PATH:
+```bash
+code --version
+```
+If not found, follow the [VSCode CLI installation guide](https://code.visualstudio.com/docs/editor/command-line).
+
+### Q: Can I use this with other editors like Sublime or Atom?
+**A:** Currently, only VSCode is supported for the click-to-open feature. The analysis still works for all editors.
+
+### Q: Is this tool safe? What about the security warnings?
+**A:** Yes! Version 1.6.2+ includes comprehensive security:
+- Command injection prevention
+- Path traversal protection
+- XSS protection
+- Input validation
+- Security rating: A+
+
+The tool only accesses files within your project directory.
+
+### Q: Does this work with TypeScript generics and complex types?
+**A:** Yes! The tool automatically strips TypeScript type annotations for comparison, including:
+- Generic types (`<T>`, `<T extends Type>`)
+- Union and intersection types
+- Type assertions
+- Decorators
+
+### Q: What similarity threshold should I use?
+**A:** 
+- **70-80%** (Default): Good balance, catches most duplicates
+- **80-90%**: Stricter, only very similar code
+- **60-70%**: More permissive, may include false positives
+- **90-100%**: Only nearly identical code
+
+### Q: Can I exclude certain directories?
+**A:** Yes! The tool automatically skips:
+- `node_modules/`
+- `.git/`
+- `dist/`
+- `build/`
+
+For custom exclusions, you can modify the source code.
+
+### Q: How do I use this in CI/CD?
+**A:** Run in CLI mode and check the exit code:
+```bash
+find-duplicate ./src 80 || echo "Duplicates found!"
+```
+
+### Q: Why are JSX components not showing as duplicates?
+**A:** Version 1.5.0+ includes smart JSX detection. Components using different React components (e.g., `<Button>` vs `<Card>`) are correctly identified as different, even if the structure is similar.
+
+### Q: Does this support arrow functions and async/await?
+**A:** Yes! The tool recognizes:
+- Arrow functions (`const f = () => {}`)
+- Async functions (`async function f() {}`)
+- Async arrow functions (`const f = async () => {}`)
+- Class methods and object methods
+- Function declarations
+
+### Q: How accurate is the similarity detection?
+**A:** Very accurate! Uses the Levenshtein distance algorithm after:
+- Normalizing whitespace
+- Removing comments
+- Stripping variable names and type annotations
+- Standardizing code structure
+
+### Q: Can I use this programmatically in my Node.js code?
+**A:** Yes! See the [API section](#api) for examples.
 
 ## 🤝 Contributing
 
