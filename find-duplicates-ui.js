@@ -56,16 +56,16 @@ function generateHTML(duplicates, stats) {
                   <div class="function-comparison">
                       <div class="function-info">
                           <h4>Function 1</h4>
-                          <div class="file-path clickable" onclick="openFile('${dup.func1.filePath.replace(/\\/g, '\\\\')}', ${dup.func1.line || 1})">📁 ${dup.func1.filePath}</div>
-                          <div class="function-name clickable" onclick="openFile('${dup.func1.filePath.replace(/\\/g, '\\\\')}', ${dup.func1.line || 1})">${dup.func1.name}()</div>
+                          <div class="file-path clickable" onclick="openFile('${escapeJsString(dup.func1.filePath)}', ${parseInt(dup.func1.line) || 1})">📁 ${escapeHtml(dup.func1.filePath)}</div>
+                          <div class="function-name clickable" onclick="openFile('${escapeJsString(dup.func1.filePath)}', ${parseInt(dup.func1.line) || 1})">${escapeHtml(dup.func1.name)}()</div>
                           <div class="code-preview">${escapeHtml(
                             dup.func1.originalBody.substring(0, 200)
                           )}${dup.func1.originalBody.length > 200 ? "..." : ""}</div>
                       </div>
                       <div class="function-info">
                           <h4>Function 2</h4>
-                          <div class="file-path clickable" onclick="openFile('${dup.func2.filePath.replace(/\\/g, '\\\\')}', ${dup.func2.line || 1})">📁 ${dup.func2.filePath}</div>
-                          <div class="function-name clickable" onclick="openFile('${dup.func2.filePath.replace(/\\/g, '\\\\')}', ${dup.func2.line || 1})">${dup.func2.name}()</div>
+                          <div class="file-path clickable" onclick="openFile('${escapeJsString(dup.func2.filePath)}', ${parseInt(dup.func2.line) || 1})">📁 ${escapeHtml(dup.func2.filePath)}</div>
+                          <div class="function-name clickable" onclick="openFile('${escapeJsString(dup.func2.filePath)}', ${parseInt(dup.func2.line) || 1})">${escapeHtml(dup.func2.name)}()</div>
                           <div class="code-preview">${escapeHtml(
                             dup.func2.originalBody.substring(0, 200)
                           )}${dup.func2.originalBody.length > 200 ? "..." : ""}</div>
@@ -95,6 +95,25 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+/**
+ * Escapes a string for safe use in JavaScript code within HTML attributes
+ * @param {string} str - The string to escape
+ * @returns {string} JavaScript-safe string
+ * @description Prevents XSS by properly escaping quotes, backslashes, and control characters
+ */
+function escapeJsString(str) {
+  if (!str) return '';
+  return str
+    .replace(/\\/g, '\\\\')  // Escape backslashes first
+    .replace(/'/g, "\\'")      // Escape single quotes
+    .replace(/"/g, '\\"')     // Escape double quotes
+    .replace(/\n/g, '\\n')     // Escape newlines
+    .replace(/\r/g, '\\r')     // Escape carriage returns
+    .replace(/\t/g, '\\t')     // Escape tabs
+    .replace(/</g, '\\x3C')    // Escape < to prevent script injection
+    .replace(/>/g, '\\x3E');   // Escape > to prevent script injection
 }
 
 // Start server
@@ -153,21 +172,42 @@ const server = http.createServer((req, res) => {
         return;
       }
       
-      // Security: Resolve and normalize the path
+      // Security: Convert to absolute path and prevent path traversal
       const absolutePath = path.resolve(filePath);
       
-      // Security: Verify the file exists and is within allowed directory
+      // Security: Ensure the resolved path is within the analyzed directory
+      // This prevents path traversal attacks like ../../../../etc/passwd
+      const normalizedBasePath = path.resolve(directory);
+      if (!absolutePath.startsWith(normalizedBasePath)) {
+        console.error(`❌ Path traversal attempt blocked: ${filePath}`);
+        res.writeHead(403, { "Content-Type": "text/plain" });
+        res.end("Forbidden: Access denied");
+        return;
+      }
+      
+      console.log(`📂 Attempting to open: ${absolutePath}`);
+      
+      // Security: Verify the file exists
       if (!fs.existsSync(absolutePath)) {
+        console.error(`❌ File not found: ${absolutePath}`);
         res.writeHead(404, { "Content-Type": "text/plain" });
         res.end("File not found");
         return;
       }
       
       // Security: Check if it's actually a file (not a directory)
-      const stats = fs.statSync(absolutePath);
-      if (!stats.isFile()) {
-        res.writeHead(400, { "Content-Type": "text/plain" });
-        res.end("Path is not a file");
+      try {
+        const stats = fs.statSync(absolutePath);
+        if (!stats.isFile()) {
+          console.error(`❌ Path is not a file: ${absolutePath}`);
+          res.writeHead(400, { "Content-Type": "text/plain" });
+          res.end("Path is not a file");
+          return;
+        }
+      } catch (error) {
+        console.error(`❌ Error checking file: ${error.message}`);
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Internal server error");
         return;
       }
       
