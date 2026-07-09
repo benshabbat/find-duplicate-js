@@ -1,6 +1,6 @@
 {
   "name": "find-duplicate-js",
-  "version": "1.6.2",
+  "version": "1.7.0",
   "description": "A tool to find duplicate code in JavaScript and TypeScript functions with smart JSX/TSX component detection",
   "main": "find-duplicates.js",
   "type": "module",
@@ -40,7 +40,7 @@
   },
   "homepage": "https://github.com/benshabbat/find-duplicate-js#readme",
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=20.0.0"
   },
   "files": [
     "find-duplicates.js",

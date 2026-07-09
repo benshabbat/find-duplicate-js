@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-07-09
+
+### ⚠️ Breaking
+- Raised the minimum supported Node.js version from 14 to **20**. The test suite uses the built-in `node --test` runner, which doesn't exist before Node 18, and Node 18's test runner has its own internal stability bugs (structured-clone/IPC reporting failures against `tests/ui.test.js`) that don't reproduce on Node 20+. The `>=14.0.0` `engines` constraint was never actually accurate for this project's own tooling, and CI now catches that.
+
+### 🏗️ Structure & Tooling
+- Split the god files (`find-duplicates-core.js`, `find-duplicates-ui.js`) into cohesive modules under `src/core/` and `src/ui/`
+- Reduced Levenshtein allocations and eliminated redundant directory walks in the similarity/scanning hot path
+- Added a CI workflow (`.github/workflows/ci.yml`) running the test suite on Node 20/22 and linting on every push/PR
+- Added ESLint (`eslint.config.js`) and a `npm run lint` script
+- Added `CONTRIBUTING.md` and GitHub issue/PR templates
+
+### ✨ Added
+- `--version` / `-v` CLI flag to print the installed version
+- Exported `extractJSXComponents` from the package entry point (`find-duplicates.js`), matching its existing documentation
+- Test coverage for the UI/HTTP server layer (`tests/ui.test.js`): HTML escaping and the `/open-file` endpoint
+
+### 🐛 Fixed
+- Importing this package as a library (`import { findDuplicates } from 'find-duplicate-js'`) no longer runs the CLI as a side effect (previously it scanned `process.cwd()` and could call `process.exit()` on import)
+- Corrected the CLI's "Scanning N JavaScript files" message to say "JavaScript/TypeScript files", matching what's actually scanned
+- Removed the duplicated Table of Contents in the README
+
+### 🧹 Removed
+- Stale root `TEST-RESULTS.md` snapshot and the redundant manual `test-api.js` smoke script
+- Redundant `.npmignore` (superseded by the `files` allowlist in `package.json`)
+
 ## [1.6.2] - 2026-01-04
 
 ### 🔒 Critical Security Update
