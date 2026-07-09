@@ -237,24 +237,30 @@ describe('findDuplicates', () => {
     fs.rmdirSync(testDir);
   });
 
-  test('should not find duplicates in identical functions from same file', () => {
+  test('should find duplicates between same-named functions in the same file', () => {
     const testDir = path.join(__dirname, 'fixtures-same');
-    
+
     if (!fs.existsSync(testDir)) {
       fs.mkdirSync(testDir, { recursive: true });
     }
-    
-    // Create file with same function name twice (both will be extracted)
+
+    // Two distinct, copy-pasted functions that happen to share a name
+    // (e.g. a `render()` method duplicated across two classes in one file)
     fs.writeFileSync(
       path.join(testDir, 'file1.js'),
       'function add(a, b) { return a + b; }\nfunction add(c, d) { return c + d; }'
     );
-    
+
     const result = findDuplicates(testDir, 70);
-    
+
     // Should extract both functions (different positions)
     assert.strictEqual(result.totalFunctions, 2);
-    
+    // And should flag them as duplicates of each other, not silently skip
+    // the comparison just because they share a name
+    assert.strictEqual(result.duplicates.length, 1);
+    assert.strictEqual(result.duplicates[0].func1.name, 'add');
+    assert.strictEqual(result.duplicates[0].func2.name, 'add');
+
     // Cleanup
     fs.unlinkSync(path.join(testDir, 'file1.js'));
     fs.rmdirSync(testDir);
