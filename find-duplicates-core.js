@@ -511,36 +511,30 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
   });
 
   const duplicates = [];
-  const checked = new Set();
 
-  // Compare each function with all other functions
+  // Compare each function with all other functions.
+  // Each unordered pair {i, j} is visited exactly once by this loop, so no
+  // extra "already checked" bookkeeping is needed. (An earlier version
+  // skipped any two functions that shared a name within the same file,
+  // which meant copy-pasted same-named methods - e.g. two classes each
+  // with a `render()` - were never reported as duplicates.)
   for (let i = 0; i < allFunctions.length; i++) {
     for (let j = i + 1; j < allFunctions.length; j++) {
       const func1 = allFunctions[i];
       const func2 = allFunctions[j];
-      
-      // Skip if it's the same function (same file and same name)
-      if (func1.filePath === func2.filePath && func1.name === func2.name) {
-        continue;
-      }
-      
+
       // Early exit: skip if size difference is too large (>50% difference)
       const len1 = func1.body.length;
       const len2 = func2.body.length;
       const sizeDiffPercent = Math.abs(len1 - len2) / Math.max(len1, len2) * 100;
-      
+
       if (sizeDiffPercent > 50) {
         continue; // Functions too different in size to be similar
       }
-      
-      const key = [func1.filePath, func1.name, func2.filePath, func2.name].sort().join('|');
-      
-      if (checked.has(key)) continue;
-      checked.add(key);
 
       // Pass JSX component info for better comparison.
       // Note: no memoization here is needed/beneficial - the (i, j) loop
-      // below already visits each function pair exactly once, so a
+      // above already visits each function pair exactly once, so a
       // similarity cache keyed on the pair would never get a hit; it was
       // measured to have a 0% hit rate while still costing a Map insertion
       // per comparison and growing unbounded, so it was removed.
