@@ -416,31 +416,44 @@ function calculateSimilarity(code1, code2, components1 = new Set(), components2 
  * @description Classic dynamic programming implementation of edit distance
  */
 function levenshteinDistance(str1, str2) {
-  const matrix = [];
+  const len1 = str1.length;
+  const len2 = str2.length;
 
-  for (let i = 0; i <= str2.length; i++) {
-    matrix[i] = [i];
+  if (len1 === 0) return len2;
+  if (len2 === 0) return len1;
+
+  // Use two rolling 1D rows instead of a full (len2+1) x (len1+1) matrix.
+  // Same O(len1*len2) time complexity, but O(len1) space instead of
+  // O(len1*len2), which avoids allocating a new array-of-arrays on every
+  // call. This matters a lot here because this function is invoked once
+  // per compared function pair (up to O(n^2) times).
+  let prevRow = new Array(len1 + 1);
+  let currRow = new Array(len1 + 1);
+
+  for (let j = 0; j <= len1; j++) {
+    prevRow[j] = j;
   }
 
-  for (let j = 0; j <= str1.length; j++) {
-    matrix[0][j] = j;
-  }
+  for (let i = 1; i <= len2; i++) {
+    currRow[0] = i;
+    const code2 = str2.charCodeAt(i - 1);
 
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
+    for (let j = 1; j <= len1; j++) {
+      const cost = code2 === str1.charCodeAt(j - 1) ? 0 : 1;
+      const deletion = prevRow[j] + 1;
+      const insertion = currRow[j - 1] + 1;
+      const substitution = prevRow[j - 1] + cost;
+      currRow[j] = deletion < insertion
+        ? (deletion < substitution ? deletion : substitution)
+        : (insertion < substitution ? insertion : substitution);
     }
+
+    const tmp = prevRow;
+    prevRow = currRow;
+    currRow = tmp;
   }
 
-  return matrix[str2.length][str1.length];
+  return prevRow[len1];
 }
 
 /**
@@ -474,14 +487,17 @@ function findJsFiles(dir, fileList = []) {
  * Finds duplicate functions in a directory
  * @param {string} directory - The root directory to analyze
  * @param {number} similarityThreshold - Minimum similarity percentage to consider as duplicate (default: 70)
+ * @param {Array<string>|null} precomputedFiles - Optional pre-computed list of files (from findJsFiles),
+ * to avoid walking the directory tree twice when the caller already needs the file list
  * @returns {{duplicates: Array<{func1: Object, func2: Object, similarity: string}>, totalFunctions: number}} Analysis results
  * @description Extracts all functions from JavaScript files in the directory and compares them pairwise
  * to find duplicates based on normalized code similarity
  */
-function findDuplicates(directory, similarityThreshold = 70) {
-  const jsFiles = findJsFiles(directory);
+function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = null) {
+  // Allow callers that already walked the directory (e.g. to report a file
+  // count) to pass the list in, instead of walking the tree a second time.
+  const jsFiles = precomputedFiles || findJsFiles(directory);
   const allFunctions = [];
-  const similarityCache = new Map(); // Cache for similarity calculations
 
   // Extract functions from all files
   jsFiles.forEach(file => {
@@ -522,22 +538,18 @@ function findDuplicates(directory, similarityThreshold = 70) {
       if (checked.has(key)) continue;
       checked.add(key);
 
-      // Check cache first
-      const cacheKey = `${func1.filePath}:${func1.startIndex}-${func2.filePath}:${func2.startIndex}`;
-      let similarity;
-      
-      if (similarityCache.has(cacheKey)) {
-        similarity = similarityCache.get(cacheKey);
-      } else {
-        // Pass JSX component info for better comparison
-        similarity = calculateSimilarity(
-          func1.body, 
-          func2.body,
-          func1.jsxComponents || new Set(),
-          func2.jsxComponents || new Set()
-        );
-        similarityCache.set(cacheKey, similarity);
-      }
+      // Pass JSX component info for better comparison.
+      // Note: no memoization here is needed/beneficial - the (i, j) loop
+      // below already visits each function pair exactly once, so a
+      // similarity cache keyed on the pair would never get a hit; it was
+      // measured to have a 0% hit rate while still costing a Map insertion
+      // per comparison and growing unbounded, so it was removed.
+      const similarity = calculateSimilarity(
+        func1.body,
+        func2.body,
+        func1.jsxComponents || new Set(),
+        func2.jsxComponents || new Set()
+      );
 
       if (similarity >= similarityThreshold) {
         duplicates.push({
