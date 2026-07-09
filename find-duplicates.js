@@ -57,7 +57,9 @@ if (hasUIFlag) {
   const jsFiles = findJsFiles(directory);
   console.log(`\n🔍 Scanning ${jsFiles.length} JavaScript files...\n`);
 
-  const result = findDuplicates(directory, threshold);
+  // Reuse the file list we already walked instead of having
+  // findDuplicates() walk the directory tree a second time.
+  const result = findDuplicates(directory, threshold, jsFiles);
   console.log(`📊 Found ${result.totalFunctions} functions total\n`);
 
   displayResults(result);

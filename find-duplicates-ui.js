@@ -131,7 +131,9 @@ function createServer(directory, threshold) {
       console.log("\n🔍 Analyzing JavaScript files...");
 
       const jsFiles = findJsFiles(directory);
-      const duplicates = findDuplicates(directory, threshold);
+      // Reuse the file list we already walked instead of having
+      // findDuplicates() walk the directory tree a second time.
+      const duplicates = findDuplicates(directory, threshold, jsFiles);
 
       const stats = {
         filesScanned: jsFiles.length,
