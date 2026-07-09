@@ -3,12 +3,9 @@
 import http from "http";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath, pathToFileURL } from "url";
+import { pathToFileURL } from "url";
 import { findDuplicates, findJsFiles } from "../core/find-duplicates-core.js";
 import { generateHTML, escapeHtml, escapeJsString } from "./find-duplicates-report.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const DEFAULT_PORT = 2712;
 
@@ -123,7 +120,7 @@ function createServer(directory, threshold) {
         
         child.unref();
         
-        child.on('error', (spawnError) => {
+        child.on('error', () => {
           // Fallback to exec if spawn fails (e.g., code not in PATH on Windows)
           console.log("Trying alternative method to open VSCode...");
           const command = process.platform === 'win32' 
