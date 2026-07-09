@@ -6,7 +6,7 @@ import {
   calculateSimilarity,
   findJsFiles,
   findDuplicates
-} from '../find-duplicates-core.js';
+} from '../src/core/find-duplicates-core.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

@@ -678,7 +678,7 @@ npm install
 
 # Run locally
 node find-duplicates.js ./src
-node find-duplicates-ui.js ./src
+node src/ui/find-duplicates-ui.js ./src
 ```
 
 ## 🔗 Links

@@ -6,7 +6,7 @@
   "type": "module",
   "bin": {
     "find-duplicate": "find-duplicates.js",
-    "find-duplicate-ui": "find-duplicates-ui.js"
+    "find-duplicate-ui": "src/ui/find-duplicates-ui.js"
   },
   "scripts": {
     "start": "node find-duplicates.js",
@@ -43,10 +43,7 @@
   },
   "files": [
     "find-duplicates.js",
-    "find-duplicates-core.js",
-    "find-duplicates-ui.js",
-    "ui-template.html",
-    "ui-styles.css",
+    "src",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

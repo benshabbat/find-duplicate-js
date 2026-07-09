@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { extractFunctions } from '../find-duplicates-core.js';
+import { extractFunctions } from '../src/core/find-duplicates-core.js';
 
 describe('Bug Fixes - Arrow Function Regex', () => {
   test('should extract arrow functions with destructured parameters', () => {
