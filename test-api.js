@@ -1,6 +1,6 @@
 // Testing find-duplicate-js API
 
-import { findDuplicates, findJsFiles } from './find-duplicates-core.js';
+import { findDuplicates, findJsFiles } from './src/core/find-duplicates-core.js';
 
 console.log('🧪 Testing find-duplicate-js API\n');
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { extractFunctions, normalizeCode, calculateSimilarity, extractJSXComponents } from '../find-duplicates-core.js';
+import { extractFunctions, normalizeCode, calculateSimilarity, extractJSXComponents } from '../src/core/find-duplicates-core.js';
 
 /**
  * Tests for TypeScript support in find-duplicate-js

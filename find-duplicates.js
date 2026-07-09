@@ -2,8 +2,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import { findDuplicates, findJsFiles } from './find-duplicates-core.js';
-import { startServer } from './find-duplicates-ui.js';
+import { findDuplicates, findJsFiles } from './src/core/find-duplicates-core.js';
+import { startServer } from './src/ui/find-duplicates-ui.js';
 
 /**
  * Displays the duplicate detection results to the console
@@ -66,4 +66,4 @@ if (hasUIFlag) {
 }
 
 // Export functions for programmatic use
-export { findDuplicates, findJsFiles, extractFunctions, normalizeCode, calculateSimilarity } from './find-duplicates-core.js';
+export { findDuplicates, findJsFiles, extractFunctions, normalizeCode, calculateSimilarity } from './src/core/find-duplicates-core.js';
