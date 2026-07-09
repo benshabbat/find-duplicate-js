@@ -2,6 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { findDuplicates, findJsFiles } from './src/core/find-duplicates-core.js';
 import { startServer } from './src/ui/find-duplicates-ui.js';
 
@@ -35,41 +36,55 @@ function displayResults(result) {
   console.log(`\n💡 Summary: Found ${duplicates.length} duplicate function pair${duplicates.length > 1 ? 's' : ''}\n`);
 }
 
-// Parse command line arguments
-const args = process.argv.slice(2);
+/**
+ * Parses command line arguments and runs the CLI or UI server.
+ * @description Only invoked when this file is executed directly (see the
+ *   isMainModule check below) so that importing this module as a library
+ *   never scans a directory or touches process.argv/process.exit as a
+ *   side effect.
+ */
+function runCli() {
+  const args = process.argv.slice(2);
 
-if (args.includes('--version') || args.includes('-v')) {
-  const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
-  console.log(pkg.version);
-  process.exit(0);
+  if (args.includes('--version') || args.includes('-v')) {
+    const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+    console.log(pkg.version);
+    process.exit(0);
+  }
+
+  const hasUIFlag = args.includes('--ui');
+  const filteredArgs = args.filter(arg => arg !== '--ui');
+  const directory = filteredArgs[0] || process.cwd();
+  const threshold = parseInt(filteredArgs[1]) || 70;
+
+  if (!fs.existsSync(directory)) {
+    console.error(`❌ Error: Directory "${directory}" does not exist`);
+    process.exit(1);
+  }
+
+  // Run UI server or CLI based on flag
+  if (hasUIFlag) {
+    startServer(directory, threshold);
+  } else {
+    console.log(`\n🚀 Searching for duplicate code in: ${directory}`);
+    console.log(`📏 Similarity threshold: ${threshold}%`);
+
+    const jsFiles = findJsFiles(directory);
+    console.log(`\n🔍 Scanning ${jsFiles.length} JavaScript/TypeScript files...\n`);
+
+    // Reuse the file list we already walked instead of having
+    // findDuplicates() walk the directory tree a second time.
+    const result = findDuplicates(directory, threshold, jsFiles);
+    console.log(`📊 Found ${result.totalFunctions} functions total\n`);
+
+    displayResults(result);
+  }
 }
 
-const hasUIFlag = args.includes('--ui');
-const filteredArgs = args.filter(arg => arg !== '--ui');
-const directory = filteredArgs[0] || process.cwd();
-const threshold = parseInt(filteredArgs[1]) || 70;
-
-if (!fs.existsSync(directory)) {
-  console.error(`❌ Error: Directory "${directory}" does not exist`);
-  process.exit(1);
-}
-
-// Run UI server or CLI based on flag
-if (hasUIFlag) {
-  startServer(directory, threshold);
-} else {
-  console.log(`\n🚀 Searching for duplicate code in: ${directory}`);
-  console.log(`📏 Similarity threshold: ${threshold}%`);
-
-  const jsFiles = findJsFiles(directory);
-  console.log(`\n🔍 Scanning ${jsFiles.length} JavaScript files...\n`);
-
-  // Reuse the file list we already walked instead of having
-  // findDuplicates() walk the directory tree a second time.
-  const result = findDuplicates(directory, threshold, jsFiles);
-  console.log(`📊 Found ${result.totalFunctions} functions total\n`);
-
-  displayResults(result);
+// Run as CLI only when this file is executed directly (not when imported)
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMainModule) {
+  runCli();
 }
 
 // Export functions for programmatic use

@@ -23,14 +23,6 @@ A powerful and intelligent tool to detect duplicate and similar code in JavaScri
 - [Contributing](#contributing)
 - [Links](#links)
 - [License](#license)
-  - [Web UI Mode](#web-ui-mode)
-- [How It Works](#how-it-works)
-- [Configuration Options](#configuration-options)
-- [Examples](#examples)
-- [API](#api)
-- [Contributing](#contributing)
-- [Links](#links)
-- [License](#license)
 
 ## 🎯 Why Use Find Duplicate JS?
 
@@ -282,11 +274,14 @@ Presents findings in an easy-to-understand format (CLI or Web UI) showing:
 ```bash
 find-duplicate [directory] [threshold]
 find-duplicate-ui [directory] [threshold]
+find-duplicate --version
 ```
 
 **Parameters:**
 - `directory` (optional): Path to analyze. Default: current directory (`.`)
 - `threshold` (optional): Similarity percentage (0-100). Default: `70`
+- `--ui` (optional flag): Launch the interactive web UI instead of printing to the terminal
+- `--version` / `-v` (optional flag): Print the installed version and exit
 
 ### Examples:
 
