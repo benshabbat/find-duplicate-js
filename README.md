@@ -508,6 +508,12 @@ Calculates similarity percentage between two code strings.
 #### `normalizeCode(code)`
 Normalizes JavaScript code for comparison.
 
+#### `extractFunctions(code, filePath)`
+Extracts all function declarations, expressions, arrow functions, and class methods from a code string.
+
+#### `extractJSXComponents(code, filePath)`
+Extracts JSX/TSX component functions from a code string, used to reduce false-positive duplicates between components and plain functions.
+
 ## 🔧 Troubleshooting
 
 ### Clickable File Paths Not Working (v1.6.0+)

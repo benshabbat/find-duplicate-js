@@ -37,6 +37,13 @@ function displayResults(result) {
 
 // Parse command line arguments
 const args = process.argv.slice(2);
+
+if (args.includes('--version') || args.includes('-v')) {
+  const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+  console.log(pkg.version);
+  process.exit(0);
+}
+
 const hasUIFlag = args.includes('--ui');
 const filteredArgs = args.filter(arg => arg !== '--ui');
 const directory = filteredArgs[0] || process.cwd();
@@ -66,4 +73,4 @@ if (hasUIFlag) {
 }
 
 // Export functions for programmatic use
-export { findDuplicates, findJsFiles, extractFunctions, normalizeCode, calculateSimilarity } from './src/core/find-duplicates-core.js';
+export { findDuplicates, findJsFiles, extractFunctions, extractJSXComponents, normalizeCode, calculateSimilarity } from './src/core/find-duplicates-core.js';
