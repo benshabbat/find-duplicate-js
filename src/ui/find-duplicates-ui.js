@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { findDuplicates, findJsFiles } from "../core/find-duplicates-core.js";
+import { parseDirectoryArgs } from "../core/find-duplicates-cli-args.js";
 import { generateHTML, escapeHtml, escapeJsString } from "./find-duplicates-report.js";
 
 const DEFAULT_PORT = 2712;
@@ -208,8 +209,6 @@ export { generateHTML, escapeHtml, escapeJsString, createServer, startServer };
 // Run as CLI only when this file is executed directly (not when imported)
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
-  const args = process.argv.slice(2);
-  const directory = args[0] || process.cwd();
-  const threshold = parseInt(args[1]) || 70;
+  const { directory, threshold } = parseDirectoryArgs(process.argv.slice(2));
   startServer(directory, threshold);
 }
