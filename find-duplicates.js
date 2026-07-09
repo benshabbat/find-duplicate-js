@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { findDuplicates, findJsFiles } from './src/core/find-duplicates-core.js';
+import { parseDirectoryArgs } from './src/core/find-duplicates-cli-args.js';
 import { startServer } from './src/ui/find-duplicates-ui.js';
 
 /**
@@ -54,13 +55,7 @@ function runCli() {
 
   const hasUIFlag = args.includes('--ui');
   const filteredArgs = args.filter(arg => arg !== '--ui');
-  const directory = filteredArgs[0] || process.cwd();
-  const threshold = parseInt(filteredArgs[1]) || 70;
-
-  if (!fs.existsSync(directory)) {
-    console.error(`❌ Error: Directory "${directory}" does not exist`);
-    process.exit(1);
-  }
+  const { directory, threshold } = parseDirectoryArgs(filteredArgs);
 
   // Run UI server or CLI based on flag
   if (hasUIFlag) {
