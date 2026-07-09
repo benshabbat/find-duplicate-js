@@ -10,6 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node-version: [14.x, 20.x, 22.x]
     steps:
@@ -20,9 +21,11 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Install dependencies
-        run: npm ci
-
+      # No install step: this package has zero runtime dependencies and the
+      # test suite only uses Node built-ins, so `npm ci` isn't needed here.
+      # It's also unsafe to run here — package-lock.json's lockfileVersion 3
+      # (written by modern npm) can't be read by the npm 6.x bundled with
+      # Node 14, one of the versions in this matrix.
       - name: Run tests
         run: npm test
 
