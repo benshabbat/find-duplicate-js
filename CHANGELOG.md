@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [1.7.0] - 2026-07-09
 
+### ⚠️ Breaking
+- Raised the minimum supported Node.js version from 14 to **18**. The test suite uses the built-in `node --test` runner, which doesn't exist before Node 18 — the `>=14.0.0` `engines` constraint was never actually accurate for this project's own tooling, and CI now catches that.
+
 ### 🏗️ Structure & Tooling
 - Split the god files (`find-duplicates-core.js`, `find-duplicates-ui.js`) into cohesive modules under `src/core/` and `src/ui/`
 - Reduced Levenshtein allocations and eliminated redundant directory walks in the similarity/scanning hot path
-- Added a CI workflow (`.github/workflows/ci.yml`) running the test suite on Node 14/20/22 and linting on every push/PR
+- Added a CI workflow (`.github/workflows/ci.yml`) running the test suite on Node 18/20/22 and linting on every push/PR
 - Added ESLint (`eslint.config.js`) and a `npm run lint` script
 - Added `CONTRIBUTING.md` and GitHub issue/PR templates
 
