@@ -3,13 +3,13 @@
 import http from "http";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { findDuplicates, findJsFiles } from "./find-duplicates-core.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 2712;
+const DEFAULT_PORT = 2712;
 
 /**
  * Generates the HTML page for the web UI
@@ -56,7 +56,7 @@ function generateHTML(duplicates, stats) {
                   <div class="function-comparison">
                       <div class="function-info">
                           <h4>Function 1</h4>
-                          <div class="file-path clickable" onclick="openFile('${escapeJsString(dup.func1.filePath)}', ${parseInt(dup.func1.line) || 1})">📁 ${escapeHtml(dup.func1.filePath)}</div>
+                          <div class="file-path clickable" onclick="openFile('${escapeJsString(dup.func1.filePath)}', ${parseInt(dup.func1.line) || 1})">📁 ${escapeHtml(dup.func1.filePath)}:${parseInt(dup.func1.line) || 1}</div>
                           <div class="function-name clickable" onclick="openFile('${escapeJsString(dup.func1.filePath)}', ${parseInt(dup.func1.line) || 1})">${escapeHtml(dup.func1.name)}()</div>
                           <div class="code-preview">${escapeHtml(
                             dup.func1.originalBody.substring(0, 200)
@@ -64,7 +64,7 @@ function generateHTML(duplicates, stats) {
                       </div>
                       <div class="function-info">
                           <h4>Function 2</h4>
-                          <div class="file-path clickable" onclick="openFile('${escapeJsString(dup.func2.filePath)}', ${parseInt(dup.func2.line) || 1})">📁 ${escapeHtml(dup.func2.filePath)}</div>
+                          <div class="file-path clickable" onclick="openFile('${escapeJsString(dup.func2.filePath)}', ${parseInt(dup.func2.line) || 1})">📁 ${escapeHtml(dup.func2.filePath)}:${parseInt(dup.func2.line) || 1}</div>
                           <div class="function-name clickable" onclick="openFile('${escapeJsString(dup.func2.filePath)}', ${parseInt(dup.func2.line) || 1})">${escapeHtml(dup.func2.name)}()</div>
                           <div class="code-preview">${escapeHtml(
                             dup.func2.originalBody.substring(0, 200)
@@ -116,16 +116,16 @@ function escapeJsString(str) {
     .replace(/>/g, '\\x3E');   // Escape > to prevent script injection
 }
 
-// Start server
-const args = process.argv.slice(2);
-const directory = args[0] || process.cwd();
-const threshold = parseInt(args[1]) || 70;
-
-console.log("\n🚀 Starting Duplicate Finder Server...\n");
-console.log(`📂 Directory: ${directory}`);
-console.log(`📏 Threshold: ${threshold}%`);
-
-const server = http.createServer((req, res) => {
+/**
+ * Creates the HTTP server that serves the duplicate report and handles
+ * "open file in editor" requests.
+ * @param {string} directory - Directory being analyzed (also used as the
+ *   security boundary for the /open-file path traversal check)
+ * @param {number} threshold - Similarity threshold
+ * @returns {http.Server}
+ */
+function createServer(directory, threshold) {
+  return http.createServer((req, res) => {
   if (req.url === "/") {
     try {
       console.log("\n🔍 Analyzing JavaScript files...");
@@ -259,33 +259,62 @@ const server = http.createServer((req, res) => {
     res.writeHead(404);
     res.end("Not Found");
   }
-});
+  });
+}
 
-server.listen(PORT, () => {
-  console.log(`\n✨ Server running at http://localhost:${PORT}`);
-  console.log(`\n💡 Open your browser and visit: http://localhost:${PORT}`);
-  console.log(`\n⏹️  Press Ctrl+C to stop the server\n`);
+/**
+ * Starts the duplicate finder web UI server and opens it in the default browser.
+ * @param {string} directory - Directory to analyze
+ * @param {number} [threshold=70] - Similarity threshold
+ * @param {number} [port=DEFAULT_PORT] - Port to listen on
+ * @returns {http.Server}
+ */
+function startServer(directory, threshold = 70, port = DEFAULT_PORT) {
+  console.log("\n🚀 Starting Duplicate Finder Server...\n");
+  console.log(`📂 Directory: ${directory}`);
+  console.log(`📏 Threshold: ${threshold}%`);
 
-  // Try to open browser automatically
-  const url = `http://localhost:${PORT}`;
-  
-  import('child_process').then(({ exec }) => {
-    let command;
-    switch (process.platform) {
-      case "win32":
-        command = `start ${url}`;
-        break;
-      case "darwin":
-        command = `open ${url}`;
-        break;
-      default:
-        command = `xdg-open ${url}`;
-    }
-    
-    exec(command, (error) => {
-      if (error) {
-        console.log("Note: Could not open browser automatically. Please open manually.");
+  const server = createServer(directory, threshold);
+
+  server.listen(port, () => {
+    console.log(`\n✨ Server running at http://localhost:${port}`);
+    console.log(`\n💡 Open your browser and visit: http://localhost:${port}`);
+    console.log(`\n⏹️  Press Ctrl+C to stop the server\n`);
+
+    // Try to open browser automatically
+    const url = `http://localhost:${port}`;
+
+    import('child_process').then(({ exec }) => {
+      let command;
+      switch (process.platform) {
+        case "win32":
+          command = `start ${url}`;
+          break;
+        case "darwin":
+          command = `open ${url}`;
+          break;
+        default:
+          command = `xdg-open ${url}`;
       }
+
+      exec(command, (error) => {
+        if (error) {
+          console.log("Note: Could not open browser automatically. Please open manually.");
+        }
+      });
     });
   });
-});
+
+  return server;
+}
+
+export { generateHTML, escapeHtml, escapeJsString, createServer, startServer };
+
+// Run as CLI only when this file is executed directly (not when imported)
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMainModule) {
+  const args = process.argv.slice(2);
+  const directory = args[0] || process.cwd();
+  const threshold = parseInt(args[1]) || 70;
+  startServer(directory, threshold);
+}

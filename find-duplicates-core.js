@@ -78,15 +78,50 @@ function findMatchingParen(code, openParenIndex) {
 }
 
 /**
+ * Builds a sorted list of character offsets where each line starts,
+ * so a character index can be converted to a 1-based line number.
+ * @param {string} code - The source code
+ * @returns {Array<number>} Offset of the first character of each line
+ */
+function buildLineOffsets(code) {
+  const offsets = [0];
+  for (let i = 0; i < code.length; i++) {
+    if (code[i] === '\n') offsets.push(i + 1);
+  }
+  return offsets;
+}
+
+/**
+ * Converts a character index into a 1-based line number using binary search.
+ * @param {Array<number>} lineOffsets - Result of buildLineOffsets()
+ * @param {number} index - Character index into the source code
+ * @returns {number} 1-based line number
+ */
+function getLineNumber(lineOffsets, index) {
+  let lo = 0;
+  let hi = lineOffsets.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (lineOffsets[mid] <= index) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo + 1;
+}
+
+/**
  * Extracts all functions from JavaScript/TypeScript code
  * @param {string} code - The JavaScript/TypeScript source code to parse
  * @param {string} filePath - The path to the source file (for tracking)
- * @returns {Array<{name: string, body: string, originalBody: string, filePath: string, startIndex: number}>} Array of extracted function objects
+ * @returns {Array<{name: string, body: string, originalBody: string, filePath: string, startIndex: number, line: number}>} Array of extracted function objects
  * @description Identifies and extracts arrow functions, function declarations, class methods, async functions, and TypeScript functions
  */
 function extractFunctions(code, filePath) {
   const functions = [];
   const functionPositions = new Map();
+  const lineOffsets = buildLineOffsets(code);
   
   // Find all functions and their positions
   const functionMatches = [];
@@ -212,6 +247,7 @@ function extractFunctions(code, filePath) {
           originalBody: body,
           filePath,
           startIndex: funcMatch.start,
+          line: getLineNumber(lineOffsets, funcMatch.start),
           jsxComponents: jsxComponents
         });
       }
