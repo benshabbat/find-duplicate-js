@@ -379,33 +379,77 @@ function calculateSimilarity(code1, code2, components1 = new Set(), components2 
   const len1 = code1.length;
   const len2 = code2.length;
   const maxLen = Math.max(len1, len2);
-  
+
   if (maxLen === 0) return 100;
-  
+
   // Use simple Levenshtein distance
   const distance = levenshteinDistance(code1, code2);
-  let similarity = ((maxLen - distance) / maxLen) * 100;
-  
-  // JSX/TSX specific: If both have JSX components, check if they're different
-  if (components1.size > 0 && components2.size > 0) {
-    // Find common components
-    const commonComponents = new Set([...components1].filter(c => components2.has(c)));
-    
-    // If there are NO common components, this is likely a different template
-    // Reduce similarity significantly
-    if (commonComponents.size === 0) {
-      similarity = similarity * 0.3; // Reduce by 70%
-    } else {
-      // If some components are common, reduce proportionally
-      const totalUniqueComponents = new Set([...components1, ...components2]).size;
-      const componentSimilarity = (commonComponents.size / totalUniqueComponents);
-      
-      // Apply component similarity as a factor (weight it 30%)
-      similarity = similarity * 0.7 + (componentSimilarity * 100 * 0.3);
-    }
+  const rawSimilarity = ((maxLen - distance) / maxLen) * 100;
+
+  return applyComponentAdjustment(rawSimilarity, components1, components2);
+}
+
+/**
+ * Adjusts a raw (text-only) similarity percentage based on JSX/TSX component
+ * overlap between the two functions being compared.
+ * @param {number} rawSimilarity - Similarity percentage from Levenshtein distance alone
+ * @param {Set<string>} components1 - JSX components in first snippet
+ * @param {Set<string>} components2 - JSX components in second snippet
+ * @returns {number} Adjusted similarity percentage
+ * @description Shared by calculateSimilarity() and findDuplicates()'s fast path
+ * so both apply the exact same JSX weighting.
+ */
+function applyComponentAdjustment(rawSimilarity, components1, components2) {
+  if (components1.size === 0 || components2.size === 0) {
+    return rawSimilarity;
   }
-  
-  return similarity;
+
+  const commonComponents = new Set([...components1].filter(c => components2.has(c)));
+
+  if (commonComponents.size === 0) {
+    return rawSimilarity * 0.3; // Reduce by 70%
+  }
+
+  const totalUniqueComponents = new Set([...components1, ...components2]).size;
+  const componentSimilarity = (commonComponents.size / totalUniqueComponents);
+
+  // Apply component similarity as a factor (weight it 30%)
+  return rawSimilarity * 0.7 + (componentSimilarity * 100 * 0.3);
+}
+
+/**
+ * Computes the minimum *raw* (pre-JSX-adjustment) similarity percentage that
+ * two functions would need in order for their JSX-adjusted similarity to
+ * reach `threshold`, given their actual JSX component overlap.
+ * @param {number} threshold - The similarity threshold that must be met
+ * @param {Set<string>} components1 - JSX components in first snippet
+ * @param {Set<string>} components2 - JSX components in second snippet
+ * @returns {number} Required raw similarity percentage, clamped to [0, 100].
+ * Returns Infinity if no raw similarity (not even 100%) could reach the
+ * threshold, e.g. when both sides have JSX components but share none of them.
+ * @description Used by findDuplicates() to size the Levenshtein "max distance"
+ * band before running the expensive comparison, so pairs that can't possibly
+ * reach the threshold are skipped without ever computing their exact distance.
+ */
+function requiredRawSimilarity(threshold, components1, components2) {
+  if (components1.size === 0 || components2.size === 0) {
+    return threshold;
+  }
+
+  const commonComponents = new Set([...components1].filter(c => components2.has(c)));
+
+  if (commonComponents.size === 0) {
+    // adjusted = raw * 0.3
+    const required = threshold / 0.3;
+    return required > 100 ? Infinity : required;
+  }
+
+  const totalUniqueComponents = new Set([...components1, ...components2]).size;
+  const componentSimilarity = (commonComponents.size / totalUniqueComponents);
+
+  // adjusted = raw * 0.7 + componentSimilarity * 30  =>  raw = (adjusted - componentSimilarity * 30) / 0.7
+  const required = (threshold - componentSimilarity * 100 * 0.3) / 0.7;
+  return Math.min(100, Math.max(0, required));
 }
 
 /**
@@ -457,6 +501,71 @@ function levenshteinDistance(str1, str2) {
 }
 
 /**
+ * Computes the Levenshtein distance between two strings, but only up to
+ * `maxDistance`. Returns `maxDistance + 1` (a "too far" sentinel) as soon as
+ * it's certain the true distance exceeds `maxDistance`, without necessarily
+ * computing the exact value in that case.
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @param {number} maxDistance - Largest distance the caller cares about
+ * @returns {number} The exact distance if it is <= maxDistance, otherwise
+ * `maxDistance + 1`.
+ * @description Any edit path that visits a cell (i, j) with
+ * |i - j| > maxDistance needs at least |i - j| insertions/deletions just to
+ * reconcile the length difference, so its total cost is already >
+ * maxDistance. Skipping those cells (banding) therefore never changes the
+ * result when the true distance is <= maxDistance - it only skips
+ * computation that couldn't have produced a better answer. This turns each
+ * comparison from O(len1*len2) into O(max(len1,len2)*maxDistance), which
+ * matters because findDuplicates() calls this once per compared function
+ * pair whose sizes are already close enough to be plausible duplicates.
+ */
+function levenshteinDistanceBounded(str1, str2, maxDistance) {
+  const len1 = str1.length;
+  const len2 = str2.length;
+
+  if (Math.abs(len1 - len2) > maxDistance) return maxDistance + 1;
+  if (len1 === 0) return len2;
+  if (len2 === 0) return len1;
+
+  const TOO_FAR = maxDistance + 1;
+  let prevRow = new Array(len1 + 1);
+  let currRow = new Array(len1 + 1);
+
+  for (let j = 0; j <= len1; j++) {
+    prevRow[j] = j <= maxDistance ? j : TOO_FAR;
+  }
+
+  for (let i = 1; i <= len2; i++) {
+    const jLo = Math.max(1, i - maxDistance);
+    const jHi = Math.min(len1, i + maxDistance);
+    const code2 = str2.charCodeAt(i - 1);
+
+    currRow[0] = i <= maxDistance ? i : TOO_FAR;
+    for (let j = 1; j < jLo; j++) currRow[j] = TOO_FAR;
+
+    for (let j = jLo; j <= jHi; j++) {
+      const cost = code2 === str1.charCodeAt(j - 1) ? 0 : 1;
+      const deletion = prevRow[j] + 1;
+      const insertion = currRow[j - 1] + 1;
+      const substitution = prevRow[j - 1] + cost;
+      const value = deletion < insertion
+        ? (deletion < substitution ? deletion : substitution)
+        : (insertion < substitution ? insertion : substitution);
+      currRow[j] = value > TOO_FAR ? TOO_FAR : value;
+    }
+
+    for (let j = jHi + 1; j <= len1; j++) currRow[j] = TOO_FAR;
+
+    const tmp = prevRow;
+    prevRow = currRow;
+    currRow = tmp;
+  }
+
+  return prevRow[len1] > maxDistance ? TOO_FAR : prevRow[len1];
+}
+
+/**
  * Recursively finds all JavaScript files in a directory
  * @param {string} dir - The directory to search
  * @param {Array<string>} fileList - Accumulator array for found files (used internally)
@@ -464,18 +573,24 @@ function levenshteinDistance(str1, str2) {
  * @description Automatically skips node_modules, .git, dist, and build directories
  */
 function findJsFiles(dir, fileList = []) {
-  const files = fs.readdirSync(dir);
+  // withFileTypes avoids a separate statSync() syscall per entry - the
+  // Dirent already reports whether it's a directory. Symlinks fall back to
+  // statSync (Dirent.isDirectory() doesn't follow them) to preserve the
+  // original behavior for that rare case.
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
 
-  files.forEach(file => {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
+  entries.forEach(entry => {
+    const filePath = path.join(dir, entry.name);
+    const isDirectory = entry.isSymbolicLink()
+      ? fs.statSync(filePath).isDirectory()
+      : entry.isDirectory();
 
-    if (stat.isDirectory()) {
+    if (isDirectory) {
       // Skip node_modules and .git
-      if (file !== 'node_modules' && file !== '.git' && file !== 'dist' && file !== 'build') {
+      if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== 'dist' && entry.name !== 'build') {
         findJsFiles(filePath, fileList);
       }
-    } else if (file.endsWith('.js') || file.endsWith('.jsx') || file.endsWith('.ts') || file.endsWith('.tsx')) {
+    } else if (entry.name.endsWith('.js') || entry.name.endsWith('.jsx') || entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
       fileList.push(filePath);
     }
   });
@@ -510,6 +625,12 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
     }
   });
 
+  // Sort by normalized body length so the inner loop below can `break`
+  // instead of scanning every remaining pair: once two functions differ in
+  // length by more than the 50% cutoff, every function later in this sorted
+  // array is at least as long, so it would fail the same cutoff too.
+  allFunctions.sort((a, b) => a.body.length - b.body.length);
+
   const duplicates = [];
 
   // Compare each function with all other functions.
@@ -519,17 +640,19 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
   // which meant copy-pasted same-named methods - e.g. two classes each
   // with a `render()` - were never reported as duplicates.)
   for (let i = 0; i < allFunctions.length; i++) {
+    const func1 = allFunctions[i];
+    const len1 = func1.body.length;
+
     for (let j = i + 1; j < allFunctions.length; j++) {
-      const func1 = allFunctions[i];
       const func2 = allFunctions[j];
 
-      // Early exit: skip if size difference is too large (>50% difference)
-      const len1 = func1.body.length;
+      // Early exit: stop if size difference is too large (>50% difference).
+      // len2 >= len1 here because the array is sorted by length.
       const len2 = func2.body.length;
-      const sizeDiffPercent = Math.abs(len1 - len2) / Math.max(len1, len2) * 100;
+      const sizeDiffPercent = ((len2 - len1) / len2) * 100;
 
       if (sizeDiffPercent > 50) {
-        continue; // Functions too different in size to be similar
+        break; // Every later j is at least as long, so it'll fail too.
       }
 
       // Pass JSX component info for better comparison.
@@ -538,12 +661,30 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
       // similarity cache keyed on the pair would never get a hit; it was
       // measured to have a 0% hit rate while still costing a Map insertion
       // per comparison and growing unbounded, so it was removed.
-      const similarity = calculateSimilarity(
-        func1.body,
-        func2.body,
-        func1.jsxComponents || new Set(),
-        func2.jsxComponents || new Set()
-      );
+      const components1 = func1.jsxComponents || new Set();
+      const components2 = func2.jsxComponents || new Set();
+
+      // Work out the minimum *raw* (pre-JSX) similarity these two would need
+      // to reach the threshold, then size the Levenshtein comparison to that
+      // exact max distance. If it's impossible (e.g. disjoint JSX component
+      // sets), skip the comparison entirely - no Levenshtein call at all.
+      const requiredRaw = requiredRawSimilarity(similarityThreshold, components1, components2);
+      if (requiredRaw === Infinity) {
+        continue;
+      }
+
+      const maxLen = Math.max(len1, len2);
+      const maxDistance = maxLen === 0 ? 0 : Math.min(maxLen, Math.ceil(maxLen * (1 - requiredRaw / 100)));
+      const distance = levenshteinDistanceBounded(func1.body, func2.body, maxDistance);
+
+      if (distance > maxDistance) {
+        // Bounded search hit its ceiling before finishing - the true
+        // distance is > maxDistance, so the threshold can't be reached.
+        continue;
+      }
+
+      const rawSimilarity = maxLen === 0 ? 100 : ((maxLen - distance) / maxLen) * 100;
+      const similarity = applyComponentAdjustment(rawSimilarity, components1, components2);
 
       if (similarity >= similarityThreshold) {
         duplicates.push({
