@@ -289,6 +289,8 @@ find-duplicate --help
 - `threshold` (optional): Similarity percentage (1-100). Default: `70`. Invalid or out-of-range values exit with an error instead of silently falling back to the default.
 - `--ui` (optional flag): Launch the interactive web UI instead of printing to the terminal
 - `--port <number>` (optional): Port for the web UI server (only with `--ui`; default: `2712`)
+- `--exclude <names>` (optional): Comma-separated extra directory names to skip, e.g. `--exclude vendor,generated` (in addition to the built-in `node_modules`, `.git`, `dist`, `build`, `coverage`)
+- `--min-length <chars>` (optional): Ignore functions whose normalized body is shorter than this many characters. Useful for filtering out trivial one-liners (getters, `return true;` stubs) that otherwise match each other at 100%
 - `--json` (optional flag): Print results as JSON for scripting/CI (cannot be combined with `--ui`)
 - `--fail-on-duplicates` (optional flag): Exit with code 1 if any duplicates are found — made for CI gates (cannot be combined with `--ui`)
 - `--version` / `-v` (optional flag): Print the installed version and exit
@@ -514,10 +516,11 @@ result.duplicates.forEach((dup, index) => {
 
 ### Available Functions
 
-#### `findJsFiles(directory)`
-Returns an array of all JavaScript/TypeScript file paths in the directory (`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`), excluding declaration files and minified bundles.
+#### `findJsFiles(directory, fileList = [], excludeDirs = null)`
+Returns an array of all JavaScript/TypeScript file paths in the directory (`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`), excluding declaration files and minified bundles. Pass a `Set` of directory names as `excludeDirs` to skip additional directories.
 
-#### `findDuplicates(directory, threshold = 70)`
+#### `findDuplicates(directory, threshold = 70, precomputedFiles = null, options = {})`
+`options` supports `excludeDirs` (a `Set` of extra directory names to skip) and `minLength` (minimum normalized-body length for a function to be compared).
 Analyzes the directory and returns:
 ```javascript
 {
@@ -670,7 +673,10 @@ The tool only accesses files within your project directory.
 - `build/`
 - `coverage/`
 
-For custom exclusions, you can modify the source code.
+For custom exclusions, use the `--exclude` flag:
+```bash
+find-duplicate ./src --exclude vendor,generated
+```
 
 ### Q: How do I use this in CI/CD?
 **A:** Use `--fail-on-duplicates`, which exits with code 1 when duplicates are found:

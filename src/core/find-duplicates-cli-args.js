@@ -33,44 +33,107 @@ function parseDirectoryArgs(args) {
 }
 
 /**
+ * Extracts a single `--flag value` / `--flag=value` pair from an argument
+ * list. Exits with an error if the flag is present but has no value.
+ * @param {string[]} args - Raw args
+ * @param {string} flag - Flag name including dashes, e.g. '--port'
+ * @param {string} example - Example value shown in the missing-value error
+ * @returns {{value: string|undefined, args: string[]}} The raw value (or
+ *   undefined if the flag wasn't given) and the remaining args with the
+ *   flag and its value removed
+ */
+function extractFlagValue(args, flag, example) {
+  const remaining = [];
+  let value;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === flag) {
+      if (i + 1 >= args.length) {
+        console.error(`❌ Error: ${flag} requires a value (e.g. ${flag} ${example})`);
+        process.exit(1);
+      }
+      value = args[++i];
+    } else if (arg.startsWith(flag + '=')) {
+      value = arg.slice(flag.length + 1);
+    } else {
+      remaining.push(arg);
+    }
+  }
+
+  return { value, args: remaining };
+}
+
+/**
  * Extracts a `--port <number>` / `--port=<number>` flag from an argument
  * list, validating the value. Shared by both bin entry points so the web UI
  * port can be chosen the same way from `find-duplicate --ui` and
  * `find-duplicate-ui`.
  * @param {string[]} args - Raw args, e.g. `process.argv.slice(2)`
- * @returns {{port: number|undefined, args: string[]}} The parsed port (or
- *   undefined if the flag wasn't given) and the remaining args with the
- *   flag and its value removed
+ * @returns {{port: number|undefined, args: string[]}}
  */
 function parsePortFlag(args) {
-  const remaining = [];
-  let port;
+  const { value, args: remaining } = extractFlagValue(args, '--port', '3000');
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    let value;
+  if (value === undefined) {
+    return { port: undefined, args: remaining };
+  }
 
-    if (arg === '--port') {
-      if (i + 1 >= args.length) {
-        console.error('❌ Error: --port requires a value (e.g. --port 3000)');
-        process.exit(1);
-      }
-      value = args[++i];
-    } else if (arg.startsWith('--port=')) {
-      value = arg.slice('--port='.length);
-    } else {
-      remaining.push(arg);
-      continue;
-    }
-
-    port = Number(value);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      console.error(`❌ Error: Port must be an integer between 1 and 65535 (got "${value}")`);
-      process.exit(1);
-    }
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`❌ Error: Port must be an integer between 1 and 65535 (got "${value}")`);
+    process.exit(1);
   }
 
   return { port, args: remaining };
 }
 
-export { parseDirectoryArgs, parsePortFlag };
+/**
+ * Extracts an `--exclude <names>` / `--exclude=<names>` flag: a
+ * comma-separated list of extra directory names to skip while scanning
+ * (on top of the built-in node_modules/.git/dist/build/coverage skip list).
+ * @param {string[]} args - Raw args
+ * @returns {{excludeDirs: Set<string>|undefined, args: string[]}}
+ */
+function parseExcludeFlag(args) {
+  const { value, args: remaining } = extractFlagValue(args, '--exclude', 'vendor,generated');
+
+  if (value === undefined) {
+    return { excludeDirs: undefined, args: remaining };
+  }
+
+  const names = value.split(',').map(name => name.trim()).filter(name => name.length > 0);
+  if (names.length === 0) {
+    console.error(`❌ Error: --exclude must list at least one directory name (got "${value}")`);
+    process.exit(1);
+  }
+
+  return { excludeDirs: new Set(names), args: remaining };
+}
+
+/**
+ * Extracts a `--min-length <chars>` / `--min-length=<chars>` flag: the
+ * minimum normalized-body length (in characters) a function must have to
+ * take part in duplicate comparison. Filters out trivial one-liners like
+ * `return true;` that otherwise match each other at 100%.
+ * @param {string[]} args - Raw args
+ * @returns {{minLength: number|undefined, args: string[]}}
+ */
+function parseMinLengthFlag(args) {
+  const { value, args: remaining } = extractFlagValue(args, '--min-length', '30');
+
+  if (value === undefined) {
+    return { minLength: undefined, args: remaining };
+  }
+
+  const minLength = Number(value);
+  if (!Number.isInteger(minLength) || minLength < 0) {
+    console.error(`❌ Error: --min-length must be a non-negative integer (got "${value}")`);
+    process.exit(1);
+  }
+
+  return { minLength, args: remaining };
+}
+
+export { parseDirectoryArgs, parsePortFlag, parseExcludeFlag, parseMinLengthFlag };

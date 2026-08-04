@@ -1,0 +1,13 @@
+# Keeps dev dependencies and workflow actions patched so npm audit
+# advisories (like the brace-expansion one fixed in 1.8.0) surface as PRs
+# instead of surprise CI failures.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

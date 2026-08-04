@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { findDuplicates, findJsFiles } from "../core/find-duplicates-core.js";
-import { parseDirectoryArgs, parsePortFlag } from "../core/find-duplicates-cli-args.js";
+import { parseDirectoryArgs, parsePortFlag, parseExcludeFlag, parseMinLengthFlag } from "../core/find-duplicates-cli-args.js";
 import { generateHTML, escapeHtml, escapeJsString } from "./find-duplicates-report.js";
 
 const DEFAULT_PORT = 2712;
@@ -16,18 +16,20 @@ const DEFAULT_PORT = 2712;
  * @param {string} directory - Directory being analyzed (also used as the
  *   security boundary for the /open-file path traversal check)
  * @param {number} threshold - Similarity threshold
+ * @param {{excludeDirs?: Set<string>, minLength?: number}} [scanOptions] -
+ *   Optional scan filters (see findDuplicates)
  * @returns {http.Server}
  */
-function createServer(directory, threshold) {
+function createServer(directory, threshold, scanOptions = {}) {
   return http.createServer((req, res) => {
   if (req.url === "/") {
     try {
       console.log("\n🔍 Analyzing JavaScript files...");
 
-      const jsFiles = findJsFiles(directory);
+      const jsFiles = findJsFiles(directory, [], scanOptions.excludeDirs || null);
       // Reuse the file list we already walked instead of having
       // findDuplicates() walk the directory tree a second time.
-      const duplicates = findDuplicates(directory, threshold, jsFiles);
+      const duplicates = findDuplicates(directory, threshold, jsFiles, scanOptions);
 
       const stats = {
         filesScanned: jsFiles.length,
@@ -163,14 +165,16 @@ function createServer(directory, threshold) {
  * @param {string} directory - Directory to analyze
  * @param {number} [threshold=70] - Similarity threshold
  * @param {number} [port=DEFAULT_PORT] - Port to listen on
+ * @param {{excludeDirs?: Set<string>, minLength?: number}} [scanOptions] -
+ *   Optional scan filters (see findDuplicates)
  * @returns {http.Server}
  */
-function startServer(directory, threshold = 70, port = DEFAULT_PORT) {
+function startServer(directory, threshold = 70, port = DEFAULT_PORT, scanOptions = {}) {
   console.log("\n🚀 Starting Duplicate Finder Server...\n");
   console.log(`📂 Directory: ${directory}`);
   console.log(`📏 Threshold: ${threshold}%`);
 
-  const server = createServer(directory, threshold);
+  const server = createServer(directory, threshold, scanOptions);
 
   // Without this handler a busy port crashes with an unhandled 'error'
   // event and a raw stack trace.
@@ -233,13 +237,17 @@ Arguments:
   threshold         Similarity percentage between 1 and 100 (default: 70)
 
 Options:
-  --port <number>   Port to listen on (default: ${DEFAULT_PORT})
-  -h, --help        Show this help message and exit
+  --port <number>        Port to listen on (default: ${DEFAULT_PORT})
+  --exclude <names>      Comma-separated extra directory names to skip
+  --min-length <chars>   Ignore functions with a normalized body shorter than this
+  -h, --help             Show this help message and exit
 `);
     process.exit(0);
   }
 
-  const { port, args: positionalArgs } = parsePortFlag(args);
+  const { port, args: argsWithoutPort } = parsePortFlag(args);
+  const { excludeDirs, args: argsWithoutExclude } = parseExcludeFlag(argsWithoutPort);
+  const { minLength, args: positionalArgs } = parseMinLengthFlag(argsWithoutExclude);
   const { directory, threshold } = parseDirectoryArgs(positionalArgs);
-  startServer(directory, threshold, port);
+  startServer(directory, threshold, port, { excludeDirs, minLength });
 }
