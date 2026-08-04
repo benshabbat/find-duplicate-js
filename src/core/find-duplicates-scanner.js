@@ -7,12 +7,34 @@ import {
   levenshteinDistanceBounded
 } from './find-duplicates-similarity.js';
 
+// Directories that never contain first-party source worth scanning.
+const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
+
+// All JavaScript/TypeScript source extensions, including the ESM/CJS
+// variants (.mjs/.cjs) and their TypeScript counterparts (.mts/.cts).
+const CODE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts'];
+
 /**
- * Recursively finds all JavaScript files in a directory
+ * Decides whether a file name is a scannable JS/TS source file.
+ * @param {string} name - Base file name (not a full path)
+ * @returns {boolean}
+ * @description Declaration files (.d.ts/.d.mts/.d.cts) contain no function
+ * bodies, and minified bundles (.min.js) only produce noise pairs, so both
+ * are excluded even though their extensions would otherwise match.
+ */
+function isCodeFile(name) {
+  if (name.endsWith('.d.ts') || name.endsWith('.d.mts') || name.endsWith('.d.cts')) return false;
+  if (name.endsWith('.min.js')) return false;
+  return CODE_EXTENSIONS.some(ext => name.endsWith(ext));
+}
+
+/**
+ * Recursively finds all JavaScript/TypeScript files in a directory
  * @param {string} dir - The directory to search
  * @param {Array<string>} fileList - Accumulator array for found files (used internally)
- * @returns {Array<string>} Array of absolute file paths to .js and .jsx files
- * @description Automatically skips node_modules, .git, dist, and build directories
+ * @returns {Array<string>} Array of absolute file paths to JS/TS source files
+ * @description Automatically skips node_modules, .git, dist, build, and
+ * coverage directories, plus declaration files and minified bundles
  */
 function findJsFiles(dir, fileList = []) {
   // withFileTypes avoids a separate statSync() syscall per entry - the
@@ -28,11 +50,10 @@ function findJsFiles(dir, fileList = []) {
       : entry.isDirectory();
 
     if (isDirectory) {
-      // Skip node_modules and .git
-      if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== 'dist' && entry.name !== 'build') {
+      if (!SKIPPED_DIRECTORIES.has(entry.name)) {
         findJsFiles(filePath, fileList);
       }
-    } else if (entry.name.endsWith('.js') || entry.name.endsWith('.jsx') || entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+    } else if (isCodeFile(entry.name)) {
       fileList.push(filePath);
     }
   });

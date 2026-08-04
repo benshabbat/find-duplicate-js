@@ -1,5 +1,5 @@
 // This file is kept as a thin re-export barrel so existing consumers
-// (find-duplicates.js, src/ui/find-duplicates-ui.js, tests/, test-api.js)
+// (find-duplicates.js, src/ui/find-duplicates-ui.js, tests/)
 // can keep importing this module unchanged. The implementation has been
 // split into cohesive modules:
 //   - find-duplicates-parser.js:     brace/paren matching, line offsets,

@@ -6,6 +6,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { generateHTML, escapeHtml, escapeJsString, createServer } from '../src/ui/find-duplicates-ui.js';
 
+// The server handlers under test log a status line on every request (via
+// console.log/console.error, with multibyte emoji). Inside the test runner's
+// child process that console traffic is interleaved with the structured
+// test-report stream on stdout, and the race has corrupted the stream in CI
+// ("Unable to deserialize cloned data due to invalid or unsupported
+// version", seen on ubuntu + Node 24). Silencing console in this file
+// removes the trigger; the tests only assert on HTTP responses, never on
+// console output.
+console.log = () => {};
+console.error = () => {};
+
 describe('escapeHtml', () => {
   test('escapes <, >, &, ", \'', () => {
     assert.strictEqual(

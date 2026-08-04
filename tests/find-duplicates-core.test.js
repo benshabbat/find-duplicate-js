@@ -35,6 +35,19 @@ describe('normalizeCode', () => {
     assert.strictEqual(normalized.includes('*/'), false);
   });
 
+  test('should treat strings with escaped quotes as a single literal', () => {
+    // With naive quote matching, the escaped quote in 'it\'s done' would
+    // terminate the string early and leave a dangling `s done'` tail, making
+    // two otherwise-identical functions look different.
+    const withEscape = normalizeCode("return 'it\\'s done';");
+    const plain = normalizeCode("return 'finished';");
+    assert.strictEqual(withEscape, plain);
+
+    const doubleQuoted = normalizeCode('return "say \\"hi\\" now";');
+    const doublePlain = normalizeCode('return "hello";');
+    assert.strictEqual(doubleQuoted, doublePlain);
+  });
+
   test('should replace variable names with V', () => {
     const code = 'const myVariable = 10;';
     const normalized = normalizeCode(code);
@@ -205,6 +218,31 @@ describe('findJsFiles', () => {
     fs.unlinkSync(path.join(nodeModulesDir, 'lib.js'));
     fs.rmdirSync(nodeModulesDir);
     fs.rmdirSync(testDir);
+  });
+
+  test('should include .mjs/.cjs/.mts/.cts and exclude declarations, minified bundles, and coverage/', () => {
+    const testDir = path.join(__dirname, 'fixtures-ext');
+    const coverageDir = path.join(testDir, 'coverage');
+    fs.mkdirSync(coverageDir, { recursive: true });
+
+    const included = ['mod.mjs', 'legacy.cjs', 'typed.mts', 'typed2.cts'];
+    const excluded = ['types.d.ts', 'types.d.mts', 'types.d.cts', 'bundle.min.js'];
+    for (const name of [...included, ...excluded]) {
+      fs.writeFileSync(path.join(testDir, name), 'export const x = 1;');
+    }
+    fs.writeFileSync(path.join(coverageDir, 'instrumented.js'), 'console.log("cov");');
+
+    const files = findJsFiles(testDir).map(f => path.basename(f));
+
+    for (const name of included) {
+      assert.ok(files.includes(name), `${name} should be scanned`);
+    }
+    for (const name of excluded) {
+      assert.ok(!files.includes(name), `${name} should be skipped`);
+    }
+    assert.ok(!files.includes('instrumented.js'), 'coverage/ should be skipped');
+
+    fs.rmSync(testDir, { recursive: true, force: true });
   });
 });
 
