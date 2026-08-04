@@ -9,9 +9,12 @@ function normalizeCode(code) {
   let normalized = code
     .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
     .replace(/\/\/.*/g, '') // Remove single-line comments
-    .replace(/`[^`]*`/g, '""') // Replace template literals with generic string
-    .replace(/'[^']*'/g, '""') // Replace string literals with generic string
-    .replace(/"[^"]*"/g, '""') // Replace string literals with generic string
+    // The (?:[^X\\]|\\[\s\S])* form treats a backslash-escaped quote as part
+    // of the string instead of terminating it, so 'it\'s' collapses to ""
+    // in one piece rather than leaving a dangling `s'` tail behind.
+    .replace(/`(?:[^`\\]|\\[\s\S])*`/g, '""') // Replace template literals with generic string
+    .replace(/'(?:[^'\\\n]|\\[\s\S])*'/g, '""') // Replace string literals with generic string
+    .replace(/"(?:[^"\\\n]|\\[\s\S])*"/g, '""') // Replace string literals with generic string
     // JSX/TSX specific: Replace JSX component names with generic placeholder
     // This handles <ComponentName> tags, but we need to preserve the structure
     .replace(/<([A-Z][a-zA-Z0-9]*)/g, '<COMP') // Replace opening tags

@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { findDuplicates, findJsFiles } from './src/core/find-duplicates-core.js';
-import { parseDirectoryArgs } from './src/core/find-duplicates-cli-args.js';
+import { parseDirectoryArgs, parsePortFlag } from './src/core/find-duplicates-cli-args.js';
 import { startServer } from './src/ui/find-duplicates-ui.js';
 
 /**
@@ -45,16 +45,19 @@ Arguments:
   threshold   Similarity percentage between 1 and 100 (default: 70)
 
 Options:
-  --ui             Launch the interactive web UI instead of printing to the terminal
-  --json           Print results as JSON (machine-readable, no decorative output)
-  -v, --version    Print the installed version and exit
-  -h, --help       Show this help message and exit
+  --ui                   Launch the interactive web UI instead of printing to the terminal
+  --port <number>        Port for the web UI server (only with --ui; default: 2712)
+  --json                 Print results as JSON (machine-readable, no decorative output)
+  --fail-on-duplicates   Exit with code 1 if any duplicates are found (for CI gates)
+  -v, --version          Print the installed version and exit
+  -h, --help             Show this help message and exit
 
 Examples:
-  find-duplicate                  Scan the current directory at 70% similarity
-  find-duplicate ./src 85         Scan ./src at 85% similarity
-  find-duplicate --ui ./src       Open the web UI for ./src
-  find-duplicate ./src --json     Print JSON results for scripting/CI
+  find-duplicate                        Scan the current directory at 70% similarity
+  find-duplicate ./src 85               Scan ./src at 85% similarity
+  find-duplicate --ui ./src             Open the web UI for ./src
+  find-duplicate ./src --json           Print JSON results for scripting
+  find-duplicate ./src 80 --fail-on-duplicates   Fail a CI build on duplicates
 `;
 
 /**
@@ -80,10 +83,19 @@ function runCli() {
 
   const hasUIFlag = args.includes('--ui');
   const hasJsonFlag = args.includes('--json');
-  const filteredArgs = args.filter(arg => arg !== '--ui' && arg !== '--json');
+  const hasFailFlag = args.includes('--fail-on-duplicates');
+  const { port, args: argsWithoutPort } = parsePortFlag(args);
+  const filteredArgs = argsWithoutPort.filter(
+    arg => arg !== '--ui' && arg !== '--json' && arg !== '--fail-on-duplicates'
+  );
 
-  if (hasUIFlag && hasJsonFlag) {
-    console.error('❌ Error: --json cannot be combined with --ui');
+  if (hasUIFlag && (hasJsonFlag || hasFailFlag)) {
+    console.error(`❌ Error: ${hasJsonFlag ? '--json' : '--fail-on-duplicates'} cannot be combined with --ui`);
+    process.exit(1);
+  }
+
+  if (port !== undefined && !hasUIFlag) {
+    console.error('❌ Error: --port can only be used with --ui');
     process.exit(1);
   }
 
@@ -91,10 +103,15 @@ function runCli() {
 
   // Run UI server or CLI based on flag
   if (hasUIFlag) {
-    startServer(directory, threshold);
-  } else if (hasJsonFlag) {
-    const jsFiles = findJsFiles(directory);
-    const result = findDuplicates(directory, threshold, jsFiles);
+    startServer(directory, threshold, port);
+    return;
+  }
+
+  const jsFiles = findJsFiles(directory);
+  let result;
+
+  if (hasJsonFlag) {
+    result = findDuplicates(directory, threshold, jsFiles);
     console.log(JSON.stringify({
       directory: path.resolve(directory),
       threshold,
@@ -109,16 +126,18 @@ function runCli() {
   } else {
     console.log(`\n🚀 Searching for duplicate code in: ${directory}`);
     console.log(`📏 Similarity threshold: ${threshold}%`);
-
-    const jsFiles = findJsFiles(directory);
     console.log(`\n🔍 Scanning ${jsFiles.length} JavaScript/TypeScript files...\n`);
 
     // Reuse the file list we already walked instead of having
     // findDuplicates() walk the directory tree a second time.
-    const result = findDuplicates(directory, threshold, jsFiles);
+    result = findDuplicates(directory, threshold, jsFiles);
     console.log(`📊 Found ${result.totalFunctions} functions total\n`);
 
     displayResults(result);
+  }
+
+  if (hasFailFlag && result.duplicates.length > 0) {
+    process.exit(1);
   }
 }
 

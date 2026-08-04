@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### ✨ Added
 - `--help` / `-h` flag on both bin entry points (`find-duplicate`, `find-duplicate-ui`) printing usage, arguments, and examples
 - `--json` flag for machine-readable output (directory, threshold, file/function counts, and duplicate pairs with name/file/line), for scripting and CI pipelines
+- `--fail-on-duplicates` flag: exit with code 1 when duplicates are found, so the CLI can gate CI builds (composes with `--json`)
+- `--port <number>` / `--port=<number>` flag for the web UI, on both `find-duplicate --ui` and `find-duplicate-ui` (default remains 2712)
 - Scanning now includes `.mjs`, `.cjs`, `.mts`, and `.cts` files
 
 ### 🐛 Fixed
@@ -15,10 +17,12 @@ All notable changes to this project will be documented in this file.
 - `coverage/` directories are now skipped like `node_modules`, `dist`, and `build`
 - Corrected the README's CI/CD recipe: it claimed the CLI exits non-zero when duplicates are found (it never did); the recipe now uses `--json` output instead
 - `npm test` now works on Windows with Node 20: the script uses `node --test` with no arguments (built-in test discovery) instead of a shell glob, which cmd.exe never expanded (Node's test runner only gained its own glob expansion in Node 21)
+- Code normalization now treats backslash-escaped quotes (`'it\'s'`, `"say \"hi\""`) as part of the string literal instead of terminating it early, which previously left stray text in the normalized code and lowered similarity scores for otherwise-identical functions
+- Starting the web UI on a busy port now prints a friendly "port already in use" error instead of crashing with an unhandled exception stack trace
 
 ### 🏗️ Structure & Tooling
 - Resolved the high-severity `npm audit` advisory in `brace-expansion` (transitive dev dependency) and updated ESLint to 10.8.0
-- CI now also tests on Node 24 (the active LTS line)
+- CI now also tests on Node 24 (the active LTS line) and on Windows (where the `npm test` glob bug above was invisible to the Linux-only matrix)
 - Added `Thumbs.db`, `Desktop.ini`, and `*.tgz` to `.gitignore`
 
 ### 🧹 Removed

@@ -165,6 +165,9 @@ find-duplicate --ui ./src
 
 # Custom threshold
 find-duplicate --ui ./src 80
+
+# Custom port (default: 2712)
+find-duplicate --ui ./src 80 --port 3000
 ```
 
 **Alternative:** You can also use the dedicated UI command (backwards compatibility):
@@ -285,7 +288,9 @@ find-duplicate --help
 - `directory` (optional): Path to analyze. Default: current directory (`.`)
 - `threshold` (optional): Similarity percentage (1-100). Default: `70`. Invalid or out-of-range values exit with an error instead of silently falling back to the default.
 - `--ui` (optional flag): Launch the interactive web UI instead of printing to the terminal
+- `--port <number>` (optional): Port for the web UI server (only with `--ui`; default: `2712`)
 - `--json` (optional flag): Print results as JSON for scripting/CI (cannot be combined with `--ui`)
+- `--fail-on-duplicates` (optional flag): Exit with code 1 if any duplicates are found — made for CI gates (cannot be combined with `--ui`)
 - `--version` / `-v` (optional flag): Print the installed version and exit
 - `--help` / `-h` (optional flag): Show usage help and exit
 
@@ -668,15 +673,14 @@ The tool only accesses files within your project directory.
 For custom exclusions, you can modify the source code.
 
 ### Q: How do I use this in CI/CD?
-**A:** Use `--json` and fail the build when the duplicates array is non-empty:
+**A:** Use `--fail-on-duplicates`, which exits with code 1 when duplicates are found:
 ```bash
-find-duplicate ./src 80 --json | node -e "
-  let s = '';
-  process.stdin.on('data', c => s += c).on('end', () => {
-    const dups = JSON.parse(s).duplicates;
-    if (dups.length > 0) { console.error(\`Found \${dups.length} duplicate pair(s)\`); process.exit(1); }
-  });
-"
+find-duplicate ./src 80 --fail-on-duplicates
+```
+
+For custom reporting, combine it with `--json` — the JSON is printed before the non-zero exit:
+```bash
+find-duplicate ./src 80 --json --fail-on-duplicates > duplicates.json
 ```
 
 ### Q: Why are JSX components not showing as duplicates?

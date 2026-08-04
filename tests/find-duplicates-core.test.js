@@ -35,6 +35,19 @@ describe('normalizeCode', () => {
     assert.strictEqual(normalized.includes('*/'), false);
   });
 
+  test('should treat strings with escaped quotes as a single literal', () => {
+    // With naive quote matching, the escaped quote in 'it\'s done' would
+    // terminate the string early and leave a dangling `s done'` tail, making
+    // two otherwise-identical functions look different.
+    const withEscape = normalizeCode("return 'it\\'s done';");
+    const plain = normalizeCode("return 'finished';");
+    assert.strictEqual(withEscape, plain);
+
+    const doubleQuoted = normalizeCode('return "say \\"hi\\" now";');
+    const doublePlain = normalizeCode('return "hello";');
+    assert.strictEqual(doubleQuoted, doublePlain);
+  });
+
   test('should replace variable names with V', () => {
     const code = 'const myVariable = 10;';
     const normalized = normalizeCode(code);

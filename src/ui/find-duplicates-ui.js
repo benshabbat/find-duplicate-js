@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { findDuplicates, findJsFiles } from "../core/find-duplicates-core.js";
-import { parseDirectoryArgs } from "../core/find-duplicates-cli-args.js";
+import { parseDirectoryArgs, parsePortFlag } from "../core/find-duplicates-cli-args.js";
 import { generateHTML, escapeHtml, escapeJsString } from "./find-duplicates-report.js";
 
 const DEFAULT_PORT = 2712;
@@ -172,6 +172,17 @@ function startServer(directory, threshold = 70, port = DEFAULT_PORT) {
 
   const server = createServer(directory, threshold);
 
+  // Without this handler a busy port crashes with an unhandled 'error'
+  // event and a raw stack trace.
+  server.on("error", (error) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(`\n❌ Error: Port ${port} is already in use. Pass --port <number> to use a different one.`);
+    } else {
+      console.error(`\n❌ Server error: ${error.message}`);
+    }
+    process.exit(1);
+  });
+
   server.listen(port, () => {
     console.log(`\n✨ Server running at http://localhost:${port}`);
     console.log(`\n💡 Open your browser and visit: http://localhost:${port}`);
@@ -213,20 +224,22 @@ if (isMainModule) {
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`
-Usage: find-duplicate-ui [directory] [threshold]
+Usage: find-duplicate-ui [directory] [threshold] [options]
 
 Starts a local web UI (http://localhost:${DEFAULT_PORT}) showing duplicate functions.
 
 Arguments:
-  directory   Directory to scan (default: current working directory)
-  threshold   Similarity percentage between 1 and 100 (default: 70)
+  directory         Directory to scan (default: current working directory)
+  threshold         Similarity percentage between 1 and 100 (default: 70)
 
 Options:
-  -h, --help  Show this help message and exit
+  --port <number>   Port to listen on (default: ${DEFAULT_PORT})
+  -h, --help        Show this help message and exit
 `);
     process.exit(0);
   }
 
-  const { directory, threshold } = parseDirectoryArgs(args);
-  startServer(directory, threshold);
+  const { port, args: positionalArgs } = parsePortFlag(args);
+  const { directory, threshold } = parseDirectoryArgs(positionalArgs);
+  startServer(directory, threshold, port);
 }
