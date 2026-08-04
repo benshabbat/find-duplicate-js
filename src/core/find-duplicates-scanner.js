@@ -32,11 +32,13 @@ function isCodeFile(name) {
  * Recursively finds all JavaScript/TypeScript files in a directory
  * @param {string} dir - The directory to search
  * @param {Array<string>} fileList - Accumulator array for found files (used internally)
+ * @param {Set<string>|null} excludeDirs - Extra directory names to skip,
+ *   on top of the built-in skip list (e.g. from the --exclude CLI flag)
  * @returns {Array<string>} Array of absolute file paths to JS/TS source files
  * @description Automatically skips node_modules, .git, dist, build, and
  * coverage directories, plus declaration files and minified bundles
  */
-function findJsFiles(dir, fileList = []) {
+function findJsFiles(dir, fileList = [], excludeDirs = null) {
   // withFileTypes avoids a separate statSync() syscall per entry - the
   // Dirent already reports whether it's a directory. Symlinks fall back to
   // statSync (Dirent.isDirectory() doesn't follow them) to preserve the
@@ -50,8 +52,8 @@ function findJsFiles(dir, fileList = []) {
       : entry.isDirectory();
 
     if (isDirectory) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name)) {
-        findJsFiles(filePath, fileList);
+      if (!SKIPPED_DIRECTORIES.has(entry.name) && !(excludeDirs && excludeDirs.has(entry.name))) {
+        findJsFiles(filePath, fileList, excludeDirs);
       }
     } else if (isCodeFile(entry.name)) {
       fileList.push(filePath);
@@ -67,15 +69,19 @@ function findJsFiles(dir, fileList = []) {
  * @param {number} similarityThreshold - Minimum similarity percentage to consider as duplicate (default: 70)
  * @param {Array<string>|null} precomputedFiles - Optional pre-computed list of files (from findJsFiles),
  * to avoid walking the directory tree twice when the caller already needs the file list
+ * @param {{excludeDirs?: Set<string>, minLength?: number}} options - Optional filters:
+ * `excludeDirs` (extra directory names to skip when this function walks the
+ * tree itself) and `minLength` (minimum normalized-body length in characters
+ * for a function to take part in comparison; filters out trivial one-liners)
  * @returns {{duplicates: Array<{func1: Object, func2: Object, similarity: string}>, totalFunctions: number}} Analysis results
  * @description Extracts all functions from JavaScript files in the directory and compares them pairwise
  * to find duplicates based on normalized code similarity
  */
-function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = null) {
+function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = null, options = {}) {
   // Allow callers that already walked the directory (e.g. to report a file
   // count) to pass the list in, instead of walking the tree a second time.
-  const jsFiles = precomputedFiles || findJsFiles(directory);
-  const allFunctions = [];
+  const jsFiles = precomputedFiles || findJsFiles(directory, [], options.excludeDirs || null);
+  let allFunctions = [];
 
   // Extract functions from all files
   jsFiles.forEach(file => {
@@ -87,6 +93,10 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
       console.error(`❌ Error reading file ${file}:`, error.message);
     }
   });
+
+  if (options.minLength > 0) {
+    allFunctions = allFunctions.filter(func => func.body.length >= options.minLength);
+  }
 
   // Sort by normalized body length so the inner loop below can `break`
   // instead of scanning every remaining pair: once two functions differ in

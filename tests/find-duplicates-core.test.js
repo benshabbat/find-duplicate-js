@@ -244,6 +244,22 @@ describe('findJsFiles', () => {
 
     fs.rmSync(testDir, { recursive: true, force: true });
   });
+
+  test('should skip extra directories passed via excludeDirs', () => {
+    const testDir = path.join(__dirname, 'fixtures-exclude');
+    fs.mkdirSync(path.join(testDir, 'generated'), { recursive: true });
+    fs.writeFileSync(path.join(testDir, 'app.js'), 'console.log("app");');
+    fs.writeFileSync(path.join(testDir, 'generated', 'gen.js'), 'console.log("gen");');
+
+    const all = findJsFiles(testDir);
+    assert.strictEqual(all.length, 2);
+
+    const filtered = findJsFiles(testDir, [], new Set(['generated']));
+    assert.strictEqual(filtered.length, 1);
+    assert.ok(filtered[0].endsWith('app.js'));
+
+    fs.rmSync(testDir, { recursive: true, force: true });
+  });
 });
 
 describe('findDuplicates', () => {

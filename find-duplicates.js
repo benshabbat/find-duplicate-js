@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { findDuplicates, findJsFiles } from './src/core/find-duplicates-core.js';
-import { parseDirectoryArgs, parsePortFlag } from './src/core/find-duplicates-cli-args.js';
+import { parseDirectoryArgs, parsePortFlag, parseExcludeFlag, parseMinLengthFlag } from './src/core/find-duplicates-cli-args.js';
 import { startServer } from './src/ui/find-duplicates-ui.js';
 
 /**
@@ -47,6 +47,10 @@ Arguments:
 Options:
   --ui                   Launch the interactive web UI instead of printing to the terminal
   --port <number>        Port for the web UI server (only with --ui; default: 2712)
+  --exclude <names>      Comma-separated extra directory names to skip
+                         (in addition to node_modules, .git, dist, build, coverage)
+  --min-length <chars>   Ignore functions whose normalized body is shorter than
+                         this many characters (filters trivial one-liners)
   --json                 Print results as JSON (machine-readable, no decorative output)
   --fail-on-duplicates   Exit with code 1 if any duplicates are found (for CI gates)
   -v, --version          Print the installed version and exit
@@ -57,6 +61,7 @@ Examples:
   find-duplicate ./src 85               Scan ./src at 85% similarity
   find-duplicate --ui ./src             Open the web UI for ./src
   find-duplicate ./src --json           Print JSON results for scripting
+  find-duplicate ./src --exclude vendor,generated --min-length 30
   find-duplicate ./src 80 --fail-on-duplicates   Fail a CI build on duplicates
 `;
 
@@ -85,7 +90,9 @@ function runCli() {
   const hasJsonFlag = args.includes('--json');
   const hasFailFlag = args.includes('--fail-on-duplicates');
   const { port, args: argsWithoutPort } = parsePortFlag(args);
-  const filteredArgs = argsWithoutPort.filter(
+  const { excludeDirs, args: argsWithoutExclude } = parseExcludeFlag(argsWithoutPort);
+  const { minLength, args: argsWithoutMinLength } = parseMinLengthFlag(argsWithoutExclude);
+  const filteredArgs = argsWithoutMinLength.filter(
     arg => arg !== '--ui' && arg !== '--json' && arg !== '--fail-on-duplicates'
   );
 
@@ -100,18 +107,19 @@ function runCli() {
   }
 
   const { directory, threshold } = parseDirectoryArgs(filteredArgs);
+  const scanOptions = { excludeDirs, minLength };
 
   // Run UI server or CLI based on flag
   if (hasUIFlag) {
-    startServer(directory, threshold, port);
+    startServer(directory, threshold, port, scanOptions);
     return;
   }
 
-  const jsFiles = findJsFiles(directory);
+  const jsFiles = findJsFiles(directory, [], excludeDirs || null);
   let result;
 
   if (hasJsonFlag) {
-    result = findDuplicates(directory, threshold, jsFiles);
+    result = findDuplicates(directory, threshold, jsFiles, scanOptions);
     console.log(JSON.stringify({
       directory: path.resolve(directory),
       threshold,
@@ -130,7 +138,7 @@ function runCli() {
 
     // Reuse the file list we already walked instead of having
     // findDuplicates() walk the directory tree a second time.
-    result = findDuplicates(directory, threshold, jsFiles);
+    result = findDuplicates(directory, threshold, jsFiles, scanOptions);
     console.log(`📊 Found ${result.totalFunctions} functions total\n`);
 
     displayResults(result);

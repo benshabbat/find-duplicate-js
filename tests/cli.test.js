@@ -185,6 +185,65 @@ describe('find-duplicates.js CLI', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
   });
+
+  describe('--exclude and --min-length', () => {
+    let tmpDir;
+
+    test('setup: create temp dir with a duplicate inside a vendor/ subdirectory', () => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'find-duplicates-flags-test-'));
+      fs.mkdirSync(path.join(tmpDir, 'vendor'));
+      fs.writeFileSync(
+        path.join(tmpDir, 'main.js'),
+        'function first(x, y) { const total = x + y; return total; }\n'
+      );
+      fs.writeFileSync(
+        path.join(tmpDir, 'vendor', 'copy.js'),
+        'function second(a, b) { const total = a + b; return total; }\n'
+      );
+    });
+
+    test('--exclude skips the named directory', () => {
+      const withVendor = JSON.parse(runCli([tmpDir, '70', '--json']).stdout);
+      assert.strictEqual(withVendor.filesScanned, 2);
+      assert.ok(withVendor.duplicates.length >= 1);
+
+      const excluded = JSON.parse(runCli([tmpDir, '70', '--json', '--exclude', 'vendor']).stdout);
+      assert.strictEqual(excluded.filesScanned, 1);
+      assert.deepStrictEqual(excluded.duplicates, []);
+    });
+
+    test('--exclude accepts comma-separated names and the --exclude=... form', () => {
+      const excluded = JSON.parse(runCli([tmpDir, '70', '--json', '--exclude=vendor,unrelated']).stdout);
+      assert.strictEqual(excluded.filesScanned, 1);
+    });
+
+    test('--exclude with no usable names errors', () => {
+      const result = runCli([tmpDir, '70', '--exclude', ',']);
+      assert.strictEqual(result.status, 1);
+      assert.match(result.stderr, /--exclude must list at least one directory name/);
+    });
+
+    test('--min-length filters tiny functions out of the comparison', () => {
+      const all = JSON.parse(runCli([tmpDir, '70', '--json']).stdout);
+      assert.strictEqual(all.totalFunctions, 2);
+
+      const filtered = JSON.parse(runCli([tmpDir, '70', '--json', '--min-length', '100']).stdout);
+      assert.strictEqual(filtered.totalFunctions, 0);
+      assert.deepStrictEqual(filtered.duplicates, []);
+    });
+
+    test('--min-length rejects invalid values', () => {
+      for (const bad of ['abc', '-1', '3.5']) {
+        const result = runCli([tmpDir, '70', '--min-length', bad]);
+        assert.strictEqual(result.status, 1, `min-length ${bad} should be rejected`);
+        assert.match(result.stderr, /--min-length must be a non-negative integer/);
+      }
+    });
+
+    test('teardown: remove temp dir', () => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+  });
 });
 
 describe('find-duplicate-ui bin (src/ui/find-duplicates-ui.js)', () => {

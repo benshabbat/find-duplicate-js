@@ -37,6 +37,23 @@ There are no runtime dependencies, so `npm install` only sets up dev tooling (li
 - ES modules (`type: module`), Node.js built-ins only — no runtime dependencies
 - Match the existing style in the file you're editing; `npm run lint` enforces the baseline rules
 
+## Releasing (maintainers)
+
+Releases are published to npm automatically by `.github/workflows/release.yml`
+whenever a `v*` tag is pushed. The workflow re-runs tests and lint, verifies
+the tag matches `package.json`, and publishes with provenance via npm
+trusted publishing (one-time setup on npmjs.com — see the comment at the top
+of the workflow file; no token secret is stored in the repo).
+
+1. Make sure `CHANGELOG.md` has a section for the new version
+2. On an up-to-date `main`:
+   ```bash
+   npm version minor        # or patch/major; bumps package.json and creates the vX.Y.Z tag
+   git push --follow-tags   # pushing the tag triggers the release workflow
+   ```
+3. Watch the Release workflow on GitHub Actions; when it's green, verify with
+   `npm view find-duplicate-js version`
+
 ## Reporting bugs
 
 Open an issue at https://github.com/benshabbat/find-duplicate-js/issues with:

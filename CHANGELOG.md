@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.0] - 2026-08-05
+
+### ✨ Added
+- `--exclude <names>` flag (both bins): comma-separated extra directory names to skip while scanning, on top of the built-in `node_modules`/`.git`/`dist`/`build`/`coverage` list — previously the README's answer to "can I exclude directories?" was "modify the source code"
+- `--min-length <chars>` flag (both bins): ignore functions whose normalized body is shorter than the given length, filtering out trivial one-liners (`return true;` stubs, getters) that otherwise match each other at 100%
+- Both options are also available programmatically via `findDuplicates(dir, threshold, files, { excludeDirs, minLength })` and `findJsFiles(dir, [], excludeDirs)`
+
+### 🏗️ Structure & Tooling
+- Release workflow (`.github/workflows/release.yml`): pushing a `vX.Y.Z` tag now re-runs tests/lint, verifies the tag matches `package.json`, and publishes to npm with provenance via trusted publishing — tagging and publishing can no longer drift apart (v1.7.0 was once published without a tag), and no npm token lives in the repo
+- Dependabot config for npm dev dependencies and GitHub Actions, so audit advisories arrive as PRs instead of surprise CI failures
+- Documented the release process for maintainers in `CONTRIBUTING.md`
+- Internal: the three value-taking CLI flags (`--port`, `--exclude`, `--min-length`) share one `--flag value` / `--flag=value` parser instead of three hand-rolled copies
+
 ## [1.8.0] - 2026-08-04
 
 ### ✨ Added
