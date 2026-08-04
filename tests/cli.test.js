@@ -29,11 +29,44 @@ describe('find-duplicates.js CLI', () => {
     assert.strictEqual(result.stdout.trim(), pkgVersion);
   });
 
+  test('--help prints usage and exits 0', () => {
+    const result = runCli(['--help']);
+    assert.strictEqual(result.status, 0);
+    assert.match(result.stdout, /Usage: find-duplicate/);
+    assert.match(result.stdout, /--json/);
+  });
+
+  test('-h prints usage and exits 0', () => {
+    const result = runCli(['-h']);
+    assert.strictEqual(result.status, 0);
+    assert.match(result.stdout, /Usage: find-duplicate/);
+  });
+
   test('exits 1 with an error when the directory does not exist', () => {
     const missingDir = path.join(os.tmpdir(), 'find-duplicates-does-not-exist-' + Date.now());
     const result = runCli([missingDir]);
     assert.strictEqual(result.status, 1);
     assert.match(result.stderr, /does not exist/);
+  });
+
+  test('exits 1 when the threshold is not a number', () => {
+    const result = runCli(['.', 'abc']);
+    assert.strictEqual(result.status, 1);
+    assert.match(result.stderr, /Threshold must be a number between 1 and 100/);
+  });
+
+  test('exits 1 when the threshold is out of range', () => {
+    for (const bad of ['0', '101', '-5']) {
+      const result = runCli(['.', bad]);
+      assert.strictEqual(result.status, 1, `threshold ${bad} should be rejected`);
+      assert.match(result.stderr, /Threshold must be a number between 1 and 100/);
+    }
+  });
+
+  test('exits 1 when --json is combined with --ui', () => {
+    const result = runCli(['--json', '--ui']);
+    assert.strictEqual(result.status, 1);
+    assert.match(result.stderr, /--json cannot be combined with --ui/);
   });
 
   test('exits 1 for a missing directory even with --ui (validates before starting the server)', () => {
@@ -76,6 +109,33 @@ describe('find-duplicates.js CLI', () => {
       assert.match(result.stdout, /Searching for duplicate code/);
     });
 
+    test('--json prints valid machine-readable results with no decorative output', () => {
+      const result = runCli([tmpDir, '70', '--json']);
+      assert.strictEqual(result.status, 0);
+
+      const parsed = JSON.parse(result.stdout);
+      assert.strictEqual(parsed.threshold, 70);
+      assert.strictEqual(parsed.filesScanned, 2);
+      assert.ok(parsed.totalFunctions >= 2);
+      assert.ok(Array.isArray(parsed.duplicates));
+      assert.ok(parsed.duplicates.length >= 1);
+
+      const dup = parsed.duplicates[0];
+      assert.strictEqual(typeof dup.similarity, 'number');
+      for (const func of [dup.func1, dup.func2]) {
+        assert.strictEqual(typeof func.name, 'string');
+        assert.strictEqual(typeof func.file, 'string');
+        assert.strictEqual(typeof func.line, 'number');
+      }
+    });
+
+    test('--json reports an empty duplicates array when nothing matches', () => {
+      const result = runCli([tmpDir, '99', '--json']);
+      assert.strictEqual(result.status, 0);
+      const parsed = JSON.parse(result.stdout);
+      assert.deepStrictEqual(parsed.duplicates, []);
+    });
+
     test('teardown: remove temp dir', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
@@ -88,5 +148,11 @@ describe('find-duplicate-ui bin (src/ui/find-duplicates-ui.js)', () => {
     const result = spawnSync(process.execPath, [uiCliPath, missingDir], { encoding: 'utf8' });
     assert.strictEqual(result.status, 1);
     assert.match(result.stderr, /does not exist/);
+  });
+
+  test('--help prints usage and exits 0 without starting the server', () => {
+    const result = spawnSync(process.execPath, [uiCliPath, '--help'], { encoding: 'utf8' });
+    assert.strictEqual(result.status, 0);
+    assert.match(result.stdout, /Usage: find-duplicate-ui/);
   });
 });

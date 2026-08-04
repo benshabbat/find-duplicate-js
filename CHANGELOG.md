@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2026-08-04
+
+### ✨ Added
+- `--help` / `-h` flag on both bin entry points (`find-duplicate`, `find-duplicate-ui`) printing usage, arguments, and examples
+- `--json` flag for machine-readable output (directory, threshold, file/function counts, and duplicate pairs with name/file/line), for scripting and CI pipelines
+- Scanning now includes `.mjs`, `.cjs`, `.mts`, and `.cts` files
+
+### 🐛 Fixed
+- Invalid threshold arguments (e.g. `abc`, `0`, `150`) now exit with a clear error instead of silently falling back to the default of 70
+- TypeScript declaration files (`.d.ts`/`.d.mts`/`.d.cts`) and minified bundles (`.min.js`) are no longer scanned — they only produced noise pairs
+- `coverage/` directories are now skipped like `node_modules`, `dist`, and `build`
+- Corrected the README's CI/CD recipe: it claimed the CLI exits non-zero when duplicates are found (it never did); the recipe now uses `--json` output instead
+- `npm test` now works on Windows with Node 20: the script uses `node --test` with no arguments (built-in test discovery) instead of a shell glob, which cmd.exe never expanded (Node's test runner only gained its own glob expansion in Node 21)
+
+### 🏗️ Structure & Tooling
+- Resolved the high-severity `npm audit` advisory in `brace-expansion` (transitive dev dependency) and updated ESLint to 10.8.0
+- CI now also tests on Node 24 (the active LTS line)
+- Added `Thumbs.db`, `Desktop.ini`, and `*.tgz` to `.gitignore`
+
+### 🧹 Removed
+- Stale `demo-project/BUGFIX-VERIFICATION.md` results snapshot (its claims are superseded by the test suite and this changelog, and several no longer matched the code)
+
 ## [1.7.0] - 2026-07-09
 
 ### ⚠️ Breaking

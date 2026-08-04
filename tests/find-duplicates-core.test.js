@@ -206,6 +206,31 @@ describe('findJsFiles', () => {
     fs.rmdirSync(nodeModulesDir);
     fs.rmdirSync(testDir);
   });
+
+  test('should include .mjs/.cjs/.mts/.cts and exclude declarations, minified bundles, and coverage/', () => {
+    const testDir = path.join(__dirname, 'fixtures-ext');
+    const coverageDir = path.join(testDir, 'coverage');
+    fs.mkdirSync(coverageDir, { recursive: true });
+
+    const included = ['mod.mjs', 'legacy.cjs', 'typed.mts', 'typed2.cts'];
+    const excluded = ['types.d.ts', 'types.d.mts', 'types.d.cts', 'bundle.min.js'];
+    for (const name of [...included, ...excluded]) {
+      fs.writeFileSync(path.join(testDir, name), 'export const x = 1;');
+    }
+    fs.writeFileSync(path.join(coverageDir, 'instrumented.js'), 'console.log("cov");');
+
+    const files = findJsFiles(testDir).map(f => path.basename(f));
+
+    for (const name of included) {
+      assert.ok(files.includes(name), `${name} should be scanned`);
+    }
+    for (const name of excluded) {
+      assert.ok(!files.includes(name), `${name} should be skipped`);
+    }
+    assert.ok(!files.includes('instrumented.js'), 'coverage/ should be skipped');
+
+    fs.rmSync(testDir, { recursive: true, force: true });
+  });
 });
 
 describe('findDuplicates', () => {

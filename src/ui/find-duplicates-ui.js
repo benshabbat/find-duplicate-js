@@ -209,6 +209,24 @@ export { generateHTML, escapeHtml, escapeJsString, createServer, startServer };
 // Run as CLI only when this file is executed directly (not when imported)
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
-  const { directory, threshold } = parseDirectoryArgs(process.argv.slice(2));
+  const args = process.argv.slice(2);
+
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`
+Usage: find-duplicate-ui [directory] [threshold]
+
+Starts a local web UI (http://localhost:${DEFAULT_PORT}) showing duplicate functions.
+
+Arguments:
+  directory   Directory to scan (default: current working directory)
+  threshold   Similarity percentage between 1 and 100 (default: 70)
+
+Options:
+  -h, --help  Show this help message and exit
+`);
+    process.exit(0);
+  }
+
+  const { directory, threshold } = parseDirectoryArgs(args);
   startServer(directory, threshold);
 }

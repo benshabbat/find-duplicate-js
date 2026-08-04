@@ -12,7 +12,17 @@ import fs from 'fs';
  */
 function parseDirectoryArgs(args) {
   const directory = args[0] || process.cwd();
-  const threshold = parseInt(args[1]) || 70;
+  let threshold = 70;
+
+  if (args[1] !== undefined) {
+    // Number() (unlike parseInt) rejects trailing garbage like "70abc",
+    // so typos fail loudly instead of silently scanning with the default.
+    threshold = Number(args[1]);
+    if (!Number.isFinite(threshold) || threshold < 1 || threshold > 100) {
+      console.error(`❌ Error: Threshold must be a number between 1 and 100 (got "${args[1]}")`);
+      process.exit(1);
+    }
+  }
 
   if (!fs.existsSync(directory)) {
     console.error(`❌ Error: Directory "${directory}" does not exist`);

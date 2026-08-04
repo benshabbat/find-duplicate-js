@@ -65,8 +65,9 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
 
 - **⚡ Performance**:
   - Recursively scans entire project directories
-  - Automatically skips `node_modules`, `.git`, `dist`, and `build` folders
-  - Handles `.js`, `.jsx`, `.ts`, and `.tsx` files
+  - Automatically skips `node_modules`, `.git`, `dist`, `build`, and `coverage` folders
+  - Handles `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, and `.cts` files
+  - Skips declaration files (`.d.ts`) and minified bundles (`.min.js`)
 
 - **🔧 Zero Configuration**: Works out of the box with sensible defaults
 
@@ -208,11 +209,13 @@ All security features are enabled by default with no configuration needed.
 ## 🔧 How It Works
 
 ### 1. **File Discovery**
-Recursively scans your project directory and finds all `.js`, `.jsx`, `.ts`, and `.tsx` files, while intelligently skipping:
+Recursively scans your project directory and finds all `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, and `.cts` files, while intelligently skipping:
 - `node_modules`
 - `.git`
 - `dist`
 - `build`
+- `coverage`
+- Declaration files (`.d.ts`, `.d.mts`, `.d.cts`) and minified bundles (`.min.js`)
 
 ### 2. **Function Extraction**
 Uses sophisticated regex patterns to identify and extract:
@@ -275,13 +278,40 @@ Presents findings in an easy-to-understand format (CLI or Web UI) showing:
 find-duplicate [directory] [threshold]
 find-duplicate-ui [directory] [threshold]
 find-duplicate --version
+find-duplicate --help
 ```
 
 **Parameters:**
 - `directory` (optional): Path to analyze. Default: current directory (`.`)
-- `threshold` (optional): Similarity percentage (0-100). Default: `70`
+- `threshold` (optional): Similarity percentage (1-100). Default: `70`. Invalid or out-of-range values exit with an error instead of silently falling back to the default.
 - `--ui` (optional flag): Launch the interactive web UI instead of printing to the terminal
+- `--json` (optional flag): Print results as JSON for scripting/CI (cannot be combined with `--ui`)
 - `--version` / `-v` (optional flag): Print the installed version and exit
+- `--help` / `-h` (optional flag): Show usage help and exit
+
+### JSON Output
+
+For scripting and CI pipelines, `--json` prints a single machine-readable JSON object and nothing else:
+
+```bash
+find-duplicate ./src 80 --json
+```
+
+```json
+{
+  "directory": "/absolute/path/to/src",
+  "threshold": 80,
+  "filesScanned": 12,
+  "totalFunctions": 42,
+  "duplicates": [
+    {
+      "similarity": 95.5,
+      "func1": { "name": "validateUser", "file": "src/auth.js", "line": 10 },
+      "func2": { "name": "checkCredentials", "file": "src/login.js", "line": 3 }
+    }
+  ]
+}
+```
 
 ### Examples:
 
@@ -480,7 +510,7 @@ result.duplicates.forEach((dup, index) => {
 ### Available Functions
 
 #### `findJsFiles(directory)`
-Returns an array of all `.js` and `.jsx` file paths in the directory.
+Returns an array of all JavaScript/TypeScript file paths in the directory (`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`), excluding declaration files and minified bundles.
 
 #### `findDuplicates(directory, threshold = 70)`
 Analyzes the directory and returns:
@@ -633,13 +663,20 @@ The tool only accesses files within your project directory.
 - `.git/`
 - `dist/`
 - `build/`
+- `coverage/`
 
 For custom exclusions, you can modify the source code.
 
 ### Q: How do I use this in CI/CD?
-**A:** Run in CLI mode and check the exit code:
+**A:** Use `--json` and fail the build when the duplicates array is non-empty:
 ```bash
-find-duplicate ./src 80 || echo "Duplicates found!"
+find-duplicate ./src 80 --json | node -e "
+  let s = '';
+  process.stdin.on('data', c => s += c).on('end', () => {
+    const dups = JSON.parse(s).duplicates;
+    if (dups.length > 0) { console.error(\`Found \${dups.length} duplicate pair(s)\`); process.exit(1); }
+  });
+"
 ```
 
 ### Q: Why are JSX components not showing as duplicates?
