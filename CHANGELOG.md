@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.10.0] - 2026-08-05
+
+### ✨ Added
+- **Grouped output**: mutually similar functions are now clustered into groups (connected components over the pair graph) everywhere — CLI, `--json` (new `groups` array with similarity range, member list, and pair count), and the web UI (one card per group plus a "Duplicate Groups" stat). 10 near-identical route handlers are now 1 group, not 45 pair rows. Exposed programmatically as `groupDuplicates(duplicates)`.
+- **Match-type labeling**: every pair and group is labeled `exact` (identical code apart from formatting and comments) or `structural` (same shape, but identifiers/strings differ). This makes explicit that similarity is measured *after* normalizing identifiers and string literals — a structural "100%" is not a byte-for-byte copy (e.g. two setters that differ only in the field they update). The CLI prints a legend explaining the distinction.
+
+### 🐛 Fixed
+- Framework build/cache directories are now skipped by default: `.next`, `.nuxt`, `.output`, `.svelte-kit`, `.astro`, `.angular`, `.turbo`, `.vercel`, `.cache`, `.parcel-cache`, and `out`. Previously, scanning a Next.js project root chewed through hundreds of MB of compiled bundles in `.next/` (a real-world scan went from 7+ minutes to ~3 seconds).
+
 ## [1.9.0] - 2026-08-05
 
 ### ✨ Added

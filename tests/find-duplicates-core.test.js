@@ -5,8 +5,10 @@ import {
   normalizeCode,
   calculateSimilarity,
   findJsFiles,
-  findDuplicates
+  findDuplicates,
+  groupDuplicates
 } from '../src/core/find-duplicates-core.js';
+import { stripFormatting } from '../src/core/find-duplicates-normalize.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -66,6 +68,32 @@ describe('normalizeCode', () => {
     const code = 'const str = `hello ${name}`;';
     const normalized = normalizeCode(code);
     assert.strictEqual(normalized.includes('hello'), false);
+  });
+});
+
+describe('stripFormatting', () => {
+  test('removes comments and whitespace but keeps identifiers and strings', () => {
+    const code = 'const a = 1; // note\n/* block\ncomment */\nreturn a;';
+    assert.strictEqual(stripFormatting(code), 'consta=1;returna;');
+  });
+
+  test('does not treat // inside a string literal as a comment', () => {
+    const url1 = stripFormatting("fetch('https://a.example.com/x')");
+    const url2 = stripFormatting("fetch('https://b.example.com/x')");
+    assert.strictEqual(url1, "fetch('https://a.example.com/x')");
+    assert.notStrictEqual(url1, url2);
+  });
+
+  test('preserves whitespace inside string literals', () => {
+    assert.notStrictEqual(
+      stripFormatting("return 'hello world';"),
+      stripFormatting("return 'helloworld';")
+    );
+  });
+
+  test('handles escaped quotes inside strings', () => {
+    const code = "const msg = 'it\\'s done'; return msg;";
+    assert.strictEqual(stripFormatting(code), "constmsg='it\\'s done';returnmsg;");
   });
 });
 
@@ -245,6 +273,24 @@ describe('findJsFiles', () => {
     fs.rmSync(testDir, { recursive: true, force: true });
   });
 
+  test('should skip framework build/cache directories by default', () => {
+    const testDir = path.join(__dirname, 'fixtures-framework');
+    const skipped = ['.next', '.nuxt', '.svelte-kit', '.turbo', '.vercel', '.cache', 'out'];
+
+    for (const dir of skipped) {
+      fs.mkdirSync(path.join(testDir, dir), { recursive: true });
+      fs.writeFileSync(path.join(testDir, dir, 'chunk.js'), 'console.log("bundled");');
+    }
+    fs.writeFileSync(path.join(testDir, 'app.js'), 'console.log("app");');
+
+    const files = findJsFiles(testDir);
+
+    assert.strictEqual(files.length, 1);
+    assert.ok(files[0].endsWith('app.js'));
+
+    fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
   test('should skip extra directories passed via excludeDirs', () => {
     const testDir = path.join(__dirname, 'fixtures-exclude');
     fs.mkdirSync(path.join(testDir, 'generated'), { recursive: true });
@@ -320,6 +366,32 @@ describe('findDuplicates', () => {
     fs.rmdirSync(testDir);
   });
 
+  test('should label byte-identical copies exact and renamed copies structural', () => {
+    const testDir = path.join(__dirname, 'fixtures-matchtype');
+    fs.mkdirSync(testDir, { recursive: true });
+
+    // alpha/beta share an identical body; gamma has the same shape but
+    // renamed identifiers, so it only matches after normalization.
+    fs.writeFileSync(path.join(testDir, 'file1.js'), [
+      'function alpha(a, b) { const sum = a + b; return sum; }',
+      'function beta(a, b) { const sum = a + b; return sum; }',
+      'function gamma(x, y) { const value = x + y; return value; }'
+    ].join('\n'));
+
+    const result = findDuplicates(testDir, 70);
+    assert.strictEqual(result.duplicates.length, 3);
+
+    const typeOf = (name1, name2) => result.duplicates.find(
+      dup => [dup.func1.name, dup.func2.name].sort().join() === [name1, name2].sort().join()
+    ).matchType;
+
+    assert.strictEqual(typeOf('alpha', 'beta'), 'exact');
+    assert.strictEqual(typeOf('alpha', 'gamma'), 'structural');
+    assert.strictEqual(typeOf('beta', 'gamma'), 'structural');
+
+    fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
   test('should respect similarity threshold', () => {
     const testDir = path.join(__dirname, 'fixtures-threshold');
     
@@ -339,13 +411,95 @@ describe('findDuplicates', () => {
     
     const highThreshold = findDuplicates(testDir, 95);
     const lowThreshold = findDuplicates(testDir, 30);
-    
+
     // High threshold should find fewer duplicates than low threshold
     assert.ok(highThreshold.duplicates.length <= lowThreshold.duplicates.length);
-    
+
     // Cleanup
     fs.unlinkSync(path.join(testDir, 'file1.js'));
     fs.unlinkSync(path.join(testDir, 'file2.js'));
     fs.rmdirSync(testDir);
+  });
+});
+
+describe('groupDuplicates', () => {
+  test('clusters mutually similar functions into one group', () => {
+    const testDir = path.join(__dirname, 'fixtures-groups');
+    fs.mkdirSync(testDir, { recursive: true });
+
+    fs.writeFileSync(path.join(testDir, 'trio.js'), [
+      'function first(x, y) { const total = x + y; return total; }',
+      'function second(p, q) { const total = p + q; return total; }',
+      'function third(m, n) { const total = m + n; return total; }'
+    ].join('\n'));
+
+    const result = findDuplicates(testDir, 70);
+    // 3 mutually similar functions produce 3 pairs...
+    assert.strictEqual(result.duplicates.length, 3);
+
+    // ...but only 1 group of 3 members
+    const groups = groupDuplicates(result.duplicates);
+    assert.strictEqual(groups.length, 1);
+    assert.strictEqual(groups[0].functions.length, 3);
+    assert.strictEqual(groups[0].pairs.length, 3);
+    assert.ok(groups[0].minSimilarity <= groups[0].maxSimilarity);
+    // Members are sorted by file path, then line
+    assert.deepStrictEqual(groups[0].functions.map(f => f.name), ['first', 'second', 'third']);
+
+    fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
+  test('keeps unrelated duplicate pairs in separate groups', () => {
+    const testDir = path.join(__dirname, 'fixtures-groups-separate');
+    fs.mkdirSync(testDir, { recursive: true });
+
+    fs.writeFileSync(path.join(testDir, 'clusters.js'), [
+      // Cluster 1: two small arithmetic functions
+      'function first(x, y) { const total = x + y; return total; }',
+      'function second(p, q) { const total = p + q; return total; }',
+      // Cluster 2: two much larger branching functions (never compared
+      // against cluster 1 thanks to the >50% size-difference cutoff)
+      'function logA(v) { if (v) { console.log("yes-yes"); } else { console.log("no-no"); } }',
+      'function logB(w) { if (w) { console.log("yes-yes"); } else { console.log("no-no"); } }'
+    ].join('\n'));
+
+    const result = findDuplicates(testDir, 70);
+    const groups = groupDuplicates(result.duplicates);
+
+    assert.strictEqual(groups.length, 2);
+    for (const group of groups) {
+      assert.strictEqual(group.functions.length, 2);
+    }
+
+    fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
+  test('labels a group exact only when every pair is an exact copy', () => {
+    const testDir = path.join(__dirname, 'fixtures-groups-matchtype');
+    fs.mkdirSync(testDir, { recursive: true });
+
+    fs.writeFileSync(path.join(testDir, 'exact.js'), [
+      'function alpha(a, b) { const sum = a + b; return sum; }',
+      'function beta(a, b) { const sum = a + b; return sum; }'
+    ].join('\n'));
+    // Much larger than alpha/beta so the two clusters are never compared
+    // against each other (>50% size-difference cutoff) and can't merge.
+    fs.writeFileSync(path.join(testDir, 'renamed.js'), [
+      'function gammaOne(value) { if (value) { console.log("yes-yes"); } else { console.log("no-no"); } }',
+      'function gammaTwo(other) { if (other) { console.log("yes-yes"); } else { console.log("no-no"); } }'
+    ].join('\n'));
+
+    const result = findDuplicates(testDir, 70);
+    const groups = groupDuplicates(result.duplicates);
+    const byName = (name) => groups.find(g => g.functions.some(f => f.name === name));
+
+    assert.strictEqual(byName('alpha').matchType, 'exact');
+    assert.strictEqual(byName('gammaOne').matchType, 'structural');
+
+    fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
+  test('returns an empty array for no duplicates', () => {
+    assert.deepStrictEqual(groupDuplicates([]), []);
   });
 });

@@ -56,6 +56,27 @@ describe('generateHTML', () => {
     assert.match(html, /{{filesScanned}}|3/);
   });
 
+  test('clusters pairs that share functions into a single group card', () => {
+    // Three functions where A~B, A~C, B~C: the same objects appear across
+    // pairs (grouping is keyed on object identity, as in findDuplicates()).
+    const funcA = { name: 'a', filePath: 'a.js', line: 1, originalBody: 'return 1;' };
+    const funcB = { name: 'b', filePath: 'b.js', line: 1, originalBody: 'return 1;' };
+    const funcC = { name: 'c', filePath: 'c.js', line: 1, originalBody: 'return 2;' };
+    const duplicates = [
+      { similarity: '100.00', matchType: 'exact', func1: funcA, func2: funcB },
+      { similarity: '95.00', matchType: 'structural', func1: funcA, func2: funcC },
+      { similarity: '95.00', matchType: 'structural', func1: funcB, func2: funcC },
+    ];
+
+    const html = generateHTML(duplicates, { filesScanned: 3, functionsFound: 3, duplicatesFound: 3, threshold: 70 });
+
+    assert.match(html, /Group #1 &mdash; 3 functions/);
+    assert.doesNotMatch(html, /Group #2/);
+    assert.match(html, /structural/);
+    // The groups stat card is filled in from the computed clusters
+    assert.match(html, /<div class="number">1<\/div>\s*<div class="label">Duplicate Groups<\/div>/);
+  });
+
   test('escapes duplicate function names and file paths in output', () => {
     const duplicates = [
       {

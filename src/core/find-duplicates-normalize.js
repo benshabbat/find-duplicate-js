@@ -33,4 +33,77 @@ function normalizeCode(code) {
   return normalized;
 }
 
-export { normalizeCode };
+/**
+ * Strips only non-semantic text (comments and insignificant whitespace) from
+ * code, keeping identifiers and string literals intact.
+ * @param {string} code - The JavaScript/TypeScript code to strip
+ * @returns {string} The code with comments removed and all whitespace outside
+ *   string/template literals dropped
+ * @description Two functions whose stripped forms are identical are exact
+ * copies of each other (modulo formatting and comments). This is the
+ * complement of normalizeCode(), which additionally erases identifiers and
+ * string literals and therefore also matches merely *structural* clones.
+ * Implemented as a character scanner rather than regexes so that `//` inside
+ * a string (e.g. a URL literal) is never mistaken for a comment. Known
+ * limitation: regex literals aren't tracked, so a `//` inside one is treated
+ * as a comment; this can only under-report exactness, never over-report it
+ * for differing strings.
+ */
+function stripFormatting(code) {
+  let out = '';
+  let i = 0;
+  let inString = false;
+  let stringChar = '';
+
+  while (i < code.length) {
+    const char = code[i];
+    const nextChar = code[i + 1];
+
+    if (inString) {
+      out += char;
+      if (char === '\\' && i + 1 < code.length) {
+        // Copy the escaped character verbatim so \' doesn't end the string.
+        out += code[i + 1];
+        i += 2;
+        continue;
+      }
+      if (char === stringChar) {
+        inString = false;
+      }
+      i++;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      inString = true;
+      stringChar = char;
+      out += char;
+      i++;
+      continue;
+    }
+
+    if (char === '/' && nextChar === '/') {
+      while (i < code.length && code[i] !== '\n') i++;
+      continue;
+    }
+
+    if (char === '/' && nextChar === '*') {
+      i += 2;
+      while (i < code.length - 1 && !(code[i] === '*' && code[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+
+    if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f' || char === '\v') {
+      i++;
+      continue;
+    }
+
+    out += char;
+    i++;
+  }
+
+  return out;
+}
+
+export { normalizeCode, stripFormatting };

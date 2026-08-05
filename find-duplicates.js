@@ -3,38 +3,59 @@
 import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { findDuplicates, findJsFiles } from './src/core/find-duplicates-core.js';
+import { findDuplicates, findJsFiles, groupDuplicates } from './src/core/find-duplicates-core.js';
 import { parseDirectoryArgs, parsePortFlag, parseExcludeFlag, parseMinLengthFlag } from './src/core/find-duplicates-cli-args.js';
 import { startServer } from './src/ui/find-duplicates-ui.js';
 
 /**
- * Displays the duplicate detection results to the console
+ * Formats a group's similarity range for display, collapsing min==max to a
+ * single percentage.
+ * @param {{minSimilarity: number, maxSimilarity: number}} group
+ * @returns {string} e.g. "100.00%" or "85.10-94.30%"
+ */
+function similarityRangeOf(group) {
+  return group.minSimilarity === group.maxSimilarity
+    ? `${group.maxSimilarity.toFixed(2)}%`
+    : `${group.minSimilarity.toFixed(2)}-${group.maxSimilarity.toFixed(2)}%`;
+}
+
+/**
+ * Displays the duplicate detection results to the console, grouped into
+ * clusters of mutually similar functions.
  * @param {{duplicates: Array, totalFunctions: number}} result - The analysis result object
- * @description Formats and prints duplicate function pairs with similarity scores and file locations
+ * @description N functions that all match each other are printed as one
+ * group instead of N*(N-1)/2 pair rows. Each group is labeled 'exact copies'
+ * (identical apart from formatting/comments) or 'structural' (same shape,
+ * but identifiers/strings differ - the similarity score is computed after
+ * normalizing those away).
  */
 function displayResults(result) {
   const duplicates = result.duplicates;
-  
+
   if (duplicates.length === 0) {
     console.log('\n✅ Great! No duplicate functions found.\n');
     return;
   }
 
-  console.log(`\n⚠️  Found ${duplicates.length} pairs of similar functions:\n`);
+  const groups = groupDuplicates(duplicates);
+
+  console.log(`\n⚠️  Found ${duplicates.length} pair${duplicates.length > 1 ? 's' : ''} of similar functions in ${groups.length} group${groups.length > 1 ? 's' : ''}:\n`);
   console.log('═'.repeat(90));
 
-  duplicates.forEach((dup, index) => {
-    console.log(`\n📋 Match #${index + 1} - Similarity: ${dup.similarity}%`);
-    console.log(`\n   File 1: ${path.relative(process.cwd(), dup.func1.filePath)}:${dup.func1.line}`);
-    console.log(`   Function: ${dup.func1.name}()`);
-    console.log(`   Code: ${dup.func1.originalBody.substring(0, 60).replace(/\n/g, ' ')}...`);
-    console.log(`\n   File 2: ${path.relative(process.cwd(), dup.func2.filePath)}:${dup.func2.line}`);
-    console.log(`   Function: ${dup.func2.name}()`);
-    console.log(`   Code: ${dup.func2.originalBody.substring(0, 60).replace(/\n/g, ' ')}...`);
+  groups.forEach((group, index) => {
+    const label = group.matchType === 'exact' ? 'exact copies' : 'structural';
+    console.log(`\n📦 Group #${index + 1} - ${group.functions.length} functions - Similarity: ${similarityRangeOf(group)} (${label})`);
+    group.functions.forEach(func => {
+      console.log(`   • ${func.name}()  ${path.relative(process.cwd(), func.filePath)}:${func.line}`);
+    });
+    console.log(`   Code: ${group.functions[0].originalBody.substring(0, 60).replace(/\n/g, ' ')}...`);
     console.log('\n' + '─'.repeat(90));
   });
 
-  console.log(`\n💡 Summary: Found ${duplicates.length} duplicate function pair${duplicates.length > 1 ? 's' : ''}\n`);
+  console.log('\nℹ️  Similarity is measured after normalizing identifiers and string literals.');
+  console.log('   "structural" groups share the same shape but differ in names or literals;');
+  console.log('   only "exact copies" are identical code (apart from formatting and comments).');
+  console.log(`\n💡 Summary: ${groups.length} duplicate group${groups.length > 1 ? 's' : ''} (${duplicates.length} function pair${duplicates.length > 1 ? 's' : ''})\n`);
 }
 
 const HELP_TEXT = `
@@ -48,7 +69,9 @@ Options:
   --ui                   Launch the interactive web UI instead of printing to the terminal
   --port <number>        Port for the web UI server (only with --ui; default: 2712)
   --exclude <names>      Comma-separated extra directory names to skip
-                         (in addition to node_modules, .git, dist, build, coverage)
+                         (in addition to node_modules, .git, dist, build, out,
+                         coverage, and framework build/cache dirs like .next,
+                         .nuxt, .svelte-kit, .turbo, .vercel, .cache)
   --min-length <chars>   Ignore functions whose normalized body is shorter than
                          this many characters (filters trivial one-liners)
   --json                 Print results as JSON (machine-readable, no decorative output)
@@ -127,8 +150,15 @@ function runCli() {
       totalFunctions: result.totalFunctions,
       duplicates: result.duplicates.map(dup => ({
         similarity: Number(dup.similarity),
+        matchType: dup.matchType,
         func1: locationOf(dup.func1),
         func2: locationOf(dup.func2)
+      })),
+      groups: groupDuplicates(result.duplicates).map(group => ({
+        similarity: { min: group.minSimilarity, max: group.maxSimilarity },
+        matchType: group.matchType,
+        pairCount: group.pairs.length,
+        functions: group.functions.map(locationOf)
       }))
     }, null, 2));
   } else {
@@ -139,7 +169,10 @@ function runCli() {
     // Reuse the file list we already walked instead of having
     // findDuplicates() walk the directory tree a second time.
     result = findDuplicates(directory, threshold, jsFiles, scanOptions);
-    console.log(`📊 Found ${result.totalFunctions} functions total\n`);
+    // totalFunctions is post-filter, so say so - otherwise a --min-length
+    // run looks like the extractor missed most of the codebase.
+    const minLengthNote = minLength > 0 ? ` (with normalized body >= ${minLength} chars; shorter ones ignored)` : '';
+    console.log(`📊 Found ${result.totalFunctions} functions total${minLengthNote}\n`);
 
     displayResults(result);
   }
@@ -170,4 +203,4 @@ if (isMainModule) {
 }
 
 // Export functions for programmatic use
-export { findDuplicates, findJsFiles, extractFunctions, extractJSXComponents, normalizeCode, calculateSimilarity } from './src/core/find-duplicates-core.js';
+export { findDuplicates, findJsFiles, groupDuplicates, extractFunctions, extractJSXComponents, normalizeCode, calculateSimilarity } from './src/core/find-duplicates-core.js';

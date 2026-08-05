@@ -182,6 +182,10 @@ body {
     box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
+.duplicate-body > .code-preview {
+    margin-top: 20px;
+}
+
 .code-preview {
     background: #263238;
     color: #aed581;

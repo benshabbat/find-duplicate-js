@@ -12,7 +12,8 @@
 // Only the functions that were part of the original public surface
 // (module.exports of the pre-split find-duplicates-core.js) are re-exported
 // here, to avoid silently expanding the public API as a side effect of
-// this split.
+// this split. (groupDuplicates was added to the public surface deliberately,
+// in v1.10.0, alongside the grouped CLI/JSON/UI output.)
 export {
   extractFunctions,
   extractJSXComponents
@@ -22,4 +23,4 @@ export { normalizeCode } from './find-duplicates-normalize.js';
 
 export { calculateSimilarity } from './find-duplicates-similarity.js';
 
-export { findJsFiles, findDuplicates } from './find-duplicates-scanner.js';
+export { findJsFiles, findDuplicates, groupDuplicates } from './find-duplicates-scanner.js';
