@@ -1,0 +1,6 @@
+# Claude Code agent/skill definitions must be checked out with LF:
+# their YAML frontmatter silently fails to parse (and the agent/skill
+# silently fails to register) when the file has CRLF line endings.
+# Without this rule, core.autocrlf=true on Windows rewrites them to
+# CRLF on checkout, which is how three agents were once broken.
+.claude/** text eol=lf
