@@ -1,3 +1,20 @@
+// Longest run of type-ish characters any of the TypeScript-stripping
+// patterns below will consider. The bound is what keeps them linear - see
+// the comment at their use site - and it is far above any real annotation
+// or generic parameter list, so it never truncates genuine code.
+const TYPE_SPAN = 200;
+
+// Characters that can appear inside a type annotation or generic parameter
+// list. Note it contains both `<` and `>`, which is precisely why the
+// quantifiers over it have to be bounded.
+const TYPE_CHARS = 'a-zA-Z_$<>[\\]{}|&,\\s';
+
+// Hoisted so the patterns are compiled once rather than per normalizeCode()
+// call (it runs once per extracted function).
+const TYPE_ANNOTATION_BEFORE_DELIMITER = new RegExp(`:\\s*[${TYPE_CHARS}]{1,${TYPE_SPAN}}(?=\\s*[=,)\\]};])`, 'g');
+const TYPE_ANNOTATION_AT_LINE_END = new RegExp(`:\\s*[${TYPE_CHARS}]{1,${TYPE_SPAN}}$`, 'gm');
+const GENERIC_TYPE_PARAMETERS = new RegExp(`<[${TYPE_CHARS}]{1,${TYPE_SPAN}}>`, 'g');
+
 /**
  * Normalizes code for comparison by removing irrelevant differences
  * @param {string} code - The JavaScript/TypeScript code to normalize
@@ -19,10 +36,12 @@ function normalizeCode(code) {
     // This handles <ComponentName> tags, but we need to preserve the structure
     .replace(/<([A-Z][a-zA-Z0-9]*)/g, '<COMP') // Replace opening tags
     .replace(/\/([A-Z][a-zA-Z0-9]*)>/g, '/COMP>') // Replace closing tags
-    // TypeScript specific: Remove type annotations
-    .replace(/:\s*[a-zA-Z_$<>[\]{}|&,\s]+(?=\s*[=,)\]};])/g, '') // Remove type annotations (e.g., : string, : number[], : Array<T>)
-    .replace(/:\s*[a-zA-Z_$<>[\]{}|&,\s]+$/gm, '') // Remove type annotations at end of line
-    .replace(/<[a-zA-Z_$<>[\]{}|&,\s]+>/g, '') // Remove generic type parameters (e.g., <T>, <T extends U>)
+    // TypeScript specific: Remove type annotations. The length bounds baked
+    // into these three patterns are load-bearing, not cosmetic - see
+    // TYPE_SPAN above.
+    .replace(TYPE_ANNOTATION_BEFORE_DELIMITER, '') // Remove type annotations (e.g., : string, : number[], : Array<T>)
+    .replace(TYPE_ANNOTATION_AT_LINE_END, '') // Remove type annotations at end of line
+    .replace(GENERIC_TYPE_PARAMETERS, '') // Remove generic type parameters (e.g., <T>, <T extends U>)
     .replace(/\bas\s+[a-zA-Z_$][a-zA-Z0-9_$]*/g, '') // Remove type assertions (e.g., as string)
     .replace(/\binterface\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s*{[^}]*}/g, '') // Remove interface declarations
     .replace(/\btype\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s*=\s*[^;]+;/g, '') // Remove type aliases

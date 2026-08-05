@@ -296,9 +296,10 @@ describe('find-duplicate-ui bin (src/ui/find-duplicates-ui.js)', () => {
     const { createServer } = await import('node:net');
     const blocker = createServer();
     // Port 0 lets the OS pick a free port; the UI bin then collides with it.
-    // No host argument so the blocker binds the same interfaces as the UI
-    // server does, guaranteeing the collision.
-    await new Promise(resolve => blocker.listen(0, resolve));
+    // The blocker binds 127.0.0.1 because that is the only interface the UI
+    // server listens on - binding the wildcard instead does not reliably
+    // collide with a loopback-specific bind on Windows.
+    await new Promise(resolve => blocker.listen(0, '127.0.0.1', resolve));
     const busyPort = blocker.address().port;
 
     try {
