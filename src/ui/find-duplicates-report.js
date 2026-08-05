@@ -10,14 +10,21 @@ const __dirname = path.dirname(__filename);
  * Renders one member function of a duplicate group as a clickable card.
  * @param {{name: string, filePath: string, line: number}} func - Extracted function
  * @returns {string} HTML fragment
+ * @description The file path is carried in a data-* attribute and read back
+ * as text by the page's click handler, never interpolated into an inline
+ * onclick. A path is attacker-controlled input whenever the tool is pointed
+ * at untrusted code, and building `onclick="openFile('...')"` out of one is
+ * not safely escapable: the HTML parser unquotes the attribute before the JS
+ * parser ever sees it, so a file named `a" onmouseover="..." x=".js` closes
+ * the attribute and the rest becomes a real event handler.
  */
 function renderGroupMember(func) {
   const line = parseInt(func.line) || 1;
-  const onclick = `openFile('${escapeJsString(func.filePath)}', ${line})`;
+  const filePath = escapeHtml(func.filePath);
   return `
-                      <div class="function-info">
-                          <div class="file-path clickable" onclick="${onclick}">📁 ${escapeHtml(func.filePath)}:${line}</div>
-                          <div class="function-name clickable" onclick="${onclick}">${escapeHtml(func.name)}()</div>
+                      <div class="function-info" data-path="${filePath}" data-line="${line}">
+                          <div class="file-path clickable">📁 ${filePath}:${line}</div>
+                          <div class="function-name clickable">${escapeHtml(func.name)}()</div>
                       </div>`;
 }
 
@@ -25,6 +32,10 @@ function renderGroupMember(func) {
  * Generates the HTML page for the web UI
  * @param {Array} duplicates - Array of duplicate function pairs
  * @param {{filesScanned: number, functionsFound: number, duplicatesFound: number, threshold: number}} stats - Analysis statistics
+ * @param {string} [openFileToken=''] - Per-server secret the page must echo
+ *   back on /open-file calls. Only a page this server actually handed out
+ *   knows it, which is what stops an unrelated site the user has open from
+ *   driving the endpoint (see the CSRF note in find-duplicates-ui.js).
  * @returns {string} Complete HTML document as a string
  * @description Creates a responsive, interactive web interface with a
  * statistics dashboard. Pairs are clustered into groups of mutually similar
@@ -33,7 +44,7 @@ function renderGroupMember(func) {
  * labeled 'exact copies' or 'structural' (same shape after identifier/string
  * normalization, not a byte-for-byte copy).
  */
-function generateHTML(duplicates, stats) {
+function generateHTML(duplicates, stats, openFileToken = '') {
   const templatePath = path.join(__dirname, "ui-template.html");
   const cssPath = path.join(__dirname, "ui-styles.css");
 
@@ -47,6 +58,7 @@ function generateHTML(duplicates, stats) {
 
   // Replace stats placeholders
   template = template
+    .replace("{{openFileToken}}", escapeJsString(openFileToken))
     .replace("{{filesScanned}}", stats.filesScanned)
     .replace("{{functionsFound}}", stats.functionsFound)
     .replace("{{groupsFound}}", groups.length)
@@ -106,17 +118,25 @@ function escapeHtml(text) {
 }
 
 /**
- * Escapes a string for safe use in JavaScript code within HTML attributes
+ * Escapes a string for safe use inside a JavaScript string literal, including
+ * when that literal sits inside an HTML attribute.
  * @param {string} str - The string to escape
  * @returns {string} JavaScript-safe string
- * @description Prevents XSS by properly escaping quotes, backslashes, and control characters
+ * @description Quotes, angle brackets and ampersands become \xNN hex escapes
+ * rather than backslash escapes. That matters because of parser ordering: in
+ * `onclick="f('...')"` the HTML parser unquotes the attribute *before* the JS
+ * parser runs, so a backslash-escaped `\"` still contains a literal `"` that
+ * ends the attribute, and an `&quot;` entity is decoded back into one. A hex
+ * escape carries no character that either parser treats as special. The
+ * ampersand rule is what closes the entity-decoding route, so it must stay.
  */
 function escapeJsString(str) {
   if (!str) return '';
   return str
     .replace(/\\/g, '\\\\')  // Escape backslashes first
-    .replace(/'/g, "\\'")      // Escape single quotes
-    .replace(/"/g, '\\"')     // Escape double quotes
+    .replace(/&/g, '\\x26')    // Escape & so HTML entities can't smuggle a quote back in
+    .replace(/'/g, '\\x27')    // Escape single quotes
+    .replace(/"/g, '\\x22')    // Escape double quotes
     .replace(/\n/g, '\\n')     // Escape newlines
     .replace(/\r/g, '\\r')     // Escape carriage returns
     .replace(/\t/g, '\\t')     // Escape tabs

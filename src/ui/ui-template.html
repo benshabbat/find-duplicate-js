@@ -43,14 +43,14 @@
     </div>
     
     <script>
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
+        // Handed out by the server that rendered this page; /open-file
+        // rejects requests that don't echo it back, so another site the
+        // user has open can't drive the endpoint.
+        const OPEN_FILE_TOKEN = "{{openFileToken}}";
+
         function openFile(filePath, line) {
-            fetch(`/open-file?path=${encodeURIComponent(filePath)}&line=${line}`)
+            const query = new URLSearchParams({ path: filePath, line: line, token: OPEN_FILE_TOKEN });
+            fetch(`/open-file?${query}`)
                 .then(response => {
                     if (response.ok) {
                         console.log('File opened in VSCode');
@@ -60,6 +60,17 @@
                 })
                 .catch(error => console.error('Error:', error));
         }
+
+        // Delegated click handling. File paths reach the page as data-*
+        // attributes and are read back as text here, so a path is never
+        // parsed as markup or as code - see renderGroupMember().
+        document.getElementById('results').addEventListener('click', (event) => {
+            const clicked = event.target.closest('.clickable');
+            if (!clicked) return;
+            const info = clicked.closest('.function-info');
+            if (!info) return;
+            openFile(info.dataset.path, Number(info.dataset.line) || 1);
+        });
     </script>
 </body>
 </html>

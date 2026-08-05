@@ -57,13 +57,11 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
   - **Web UI Mode**: Beautiful, interactive web interface with visual comparisons
   - **🖱️ Clickable Navigation**: Click on file paths or function names to open in VSCode (v1.6.0+)
 
-- **🔒 Enterprise-Grade Security** (v1.6.1+):
-  - Protection against command injection attacks
-  - Path traversal prevention
-  - XSS (Cross-Site Scripting) protection
-  - Input validation and sanitization
-  - Multiple security layers (7+)
-  - Security rating: A+
+- **🔒 Hardened web UI**:
+  - Binds to `127.0.0.1` only — never exposed to your network
+  - Treats scanned file names as untrusted input (safe to point at code you didn't write)
+  - Editor launching never goes through a shell on Linux/macOS
+  - `/open-file` is scoped to the scanned directory, symlinks included, and requires a per-session token
 
 - **⚡ Performance**:
   - Recursively scans entire project directories
@@ -187,7 +185,7 @@ find-duplicate-ui ./src 80
 ```
 
 The web interface will:
-1. Start a local server on `http://localhost:2712`
+1. Start a local server on `http://127.0.0.1:2712` (loopback only — not reachable from your network)
 2. Automatically open your default browser
 3. Display an interactive dashboard with:
    - Project statistics
@@ -207,18 +205,19 @@ The web interface will:
   - Visual hover effects show clickable elements
   - Cross-platform support (Windows, macOS, Linux)
 
-### 🔒 Security Features (v1.6.1+)
+### 🔒 Security of the web UI
 
-The web UI includes comprehensive security protections:
+The threat model worth stating plainly: **file names in the scanned tree are untrusted input.** If you scan a repository you didn't write, a crafted file name is attacker-controlled text that reaches the report page and the editor-launching endpoint. The UI is built so that this is safe.
 
-- **Command Injection Prevention**: Uses secure `spawn()` with array arguments
-- **Path Traversal Protection**: Validates file paths to prevent unauthorized access
-- **XSS Protection**: Sanitizes all user input and file paths
-- **Input Validation**: Validates all parameters (line numbers, paths)
-- **File System Validation**: Ensures only valid files within the project are accessed
-- **Information Disclosure Prevention**: Generic error messages
+- **Loopback only**: the server binds `127.0.0.1`, so the report — which contains absolute paths and source snippets — is never reachable from your network. To view it from another machine, tunnel to the host (`ssh -L 2712:127.0.0.1:2712 …`).
+- **No injection surface for file names**: paths reach the page in `data-*` attributes and are read back as text, never interpolated into inline handlers or JavaScript.
+- **No shell on the editor path**: `code` is launched via `spawn()` with array arguments. On Linux/macOS there is no shell fallback at all; the Windows retry exists only because VSCode installs `code` as a `.cmd` shim, and paths that could break its quoting are refused.
+- **`/open-file` is scoped and authenticated**: requests must stay inside the scanned directory (compared by path segment, and re-checked after resolving symlinks), must carry the per-session token embedded in the page that served them, and are rejected if the browser marks them cross-site.
+- **Defense in depth**: `Content-Security-Policy: default-src 'none'; connect-src 'self'` plus `nosniff` and `no-referrer`, so even an unforeseen injection has nowhere to send what it reads.
 
-All security features are enabled by default with no configuration needed.
+All of this is on by default with no configuration.
+
+Found something? Please open a [security issue](https://github.com/benshabbat/find-duplicate-js/issues).
 
 ## 🔧 How It Works
 
@@ -645,7 +644,7 @@ lsof -ti:2712 | xargs kill -9
 ```
 
 **2. Browser Not Opening Automatically**
-Manually navigate to: `http://localhost:2712`
+Manually navigate to: `http://127.0.0.1:2712`
 
 ### General Issues
 
@@ -680,15 +679,10 @@ If not found, follow the [VSCode CLI installation guide](https://code.visualstud
 ### Q: Can I use this with other editors like Sublime or Atom?
 **A:** Currently, only VSCode is supported for the click-to-open feature. The analysis still works for all editors.
 
-### Q: Is this tool safe? What about the security warnings?
-**A:** Yes! Version 1.6.2+ includes comprehensive security:
-- Command injection prevention
-- Path traversal protection
-- XSS protection
-- Input validation
-- Security rating: A+
+### Q: Is it safe to run this on a repository I didn't write?
+**A:** Yes — that case is explicitly part of the threat model, because file names in the scanned tree are attacker-controlled text. The web UI's report renders them as inert text, the endpoint that opens files in your editor never builds a shell command from them on Linux/macOS, and it refuses anything resolving outside the directory you scanned. See [Security of the web UI](#-security-of-the-web-ui) for specifics.
 
-The tool only accesses files within your project directory.
+The tool reads files inside your project directory and writes nothing. The web UI listens on `127.0.0.1` only, so nothing is exposed to your network.
 
 ### Q: Does this work with TypeScript generics and complex types?
 **A:** Yes! The tool automatically strips TypeScript type annotations for comparison, including:
