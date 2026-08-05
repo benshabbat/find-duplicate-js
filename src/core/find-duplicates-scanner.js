@@ -1,14 +1,24 @@
 import fs from 'fs';
 import path from 'path';
 import { extractFunctions } from './find-duplicates-parser.js';
+import { stripFormatting } from './find-duplicates-normalize.js';
 import {
   applyComponentAdjustment,
   requiredRawSimilarity,
   levenshteinDistanceBounded
 } from './find-duplicates-similarity.js';
 
-// Directories that never contain first-party source worth scanning.
-const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
+// Directories that never contain first-party source worth scanning:
+// package installs, VCS internals, generic build outputs, and the build/cache
+// directories of common frameworks and tools (Next.js, Nuxt, SvelteKit,
+// Astro, Angular, Gatsby, Parcel, Turborepo, Vercel). Without the framework
+// entries, scanning a Next.js project root chews through hundreds of MB of
+// compiled bundles in .next/ before ever reaching first-party code.
+const SKIPPED_DIRECTORIES = new Set([
+  'node_modules', '.git', 'dist', 'build', 'coverage', 'out',
+  '.next', '.nuxt', '.output', '.svelte-kit', '.astro', '.angular',
+  '.turbo', '.vercel', '.cache', '.parcel-cache'
+]);
 
 // All JavaScript/TypeScript source extensions, including the ESM/CJS
 // variants (.mjs/.cjs) and their TypeScript counterparts (.mts/.cts).
@@ -106,6 +116,20 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
 
   const duplicates = [];
 
+  // Lazily computed stripped (comments/whitespace removed, identifiers and
+  // strings kept) form of each function's original body, used to tell exact
+  // copies apart from structural clones. Only functions that actually appear
+  // in a reported pair ever pay for the strip.
+  const strippedBodies = new Map();
+  const strippedBodyOf = (func) => {
+    let stripped = strippedBodies.get(func);
+    if (stripped === undefined) {
+      stripped = stripFormatting(func.originalBody);
+      strippedBodies.set(func, stripped);
+    }
+    return stripped;
+  };
+
   // Compare each function with all other functions.
   // Each unordered pair {i, j} is visited exactly once by this loop, so no
   // extra "already checked" bookkeeping is needed. (An earlier version
@@ -163,7 +187,12 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
         duplicates.push({
           func1,
           func2,
-          similarity: similarity.toFixed(2)
+          similarity: similarity.toFixed(2),
+          // 'exact': same code apart from formatting and comments.
+          // 'structural': same shape, but identifiers/strings differ - the
+          // similarity score is computed after normalizing those away, so a
+          // structural 100% is NOT a byte-for-byte copy.
+          matchType: strippedBodyOf(func1) === strippedBodyOf(func2) ? 'exact' : 'structural'
         });
       }
     }
@@ -175,4 +204,77 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
   };
 }
 
-export { findJsFiles, findDuplicates };
+/**
+ * Groups pairwise duplicate results into clusters of mutually similar
+ * functions (connected components over the pair graph).
+ * @param {Array<{func1: Object, func2: Object, similarity: string, matchType?: string}>} duplicates -
+ *   The `duplicates` array returned by findDuplicates()
+ * @returns {Array<{functions: Array<Object>, pairs: Array, minSimilarity: number,
+ *   maxSimilarity: number, matchType: 'exact'|'structural'}>} One entry per
+ *   cluster: its member functions (sorted by file path, then line), the pairs
+ *   that connect them, the similarity range across those pairs, and 'exact'
+ *   only if every pair in the cluster is an exact copy. Clusters are sorted
+ *   largest-first, then by similarity.
+ * @description N functions that are all similar to each other produce
+ * N*(N-1)/2 pairs; reporting per cluster instead of per pair collapses that
+ * quadratic noise (e.g. 10 near-identical route handlers are one group, not
+ * 45 rows). Grouping is transitive, so within a group A~C is only implied
+ * via A~B~C and the two ends may score below the threshold against each
+ * other - the similarity range reflects only the directly-compared pairs.
+ */
+function groupDuplicates(duplicates) {
+  // Union-find keyed on the function objects themselves (each extracted
+  // function is a unique object, so identity is a safe key).
+  const parent = new Map();
+
+  const find = (func) => {
+    let root = func;
+    while (parent.get(root) !== root) root = parent.get(root);
+    // Path compression
+    let current = func;
+    while (parent.get(current) !== current) {
+      const next = parent.get(current);
+      parent.set(current, root);
+      current = next;
+    }
+    return root;
+  };
+
+  for (const dup of duplicates) {
+    if (!parent.has(dup.func1)) parent.set(dup.func1, dup.func1);
+    if (!parent.has(dup.func2)) parent.set(dup.func2, dup.func2);
+    parent.set(find(dup.func1), find(dup.func2));
+  }
+
+  const groupsByRoot = new Map();
+  for (const dup of duplicates) {
+    const root = find(dup.func1);
+    let group = groupsByRoot.get(root);
+    if (!group) {
+      group = { members: new Set(), pairs: [] };
+      groupsByRoot.set(root, group);
+    }
+    group.members.add(dup.func1);
+    group.members.add(dup.func2);
+    group.pairs.push(dup);
+  }
+
+  const groups = [...groupsByRoot.values()].map(({ members, pairs }) => {
+    const similarities = pairs.map(pair => Number(pair.similarity));
+    return {
+      functions: [...members].sort(
+        (a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line
+      ),
+      pairs,
+      minSimilarity: Math.min(...similarities),
+      maxSimilarity: Math.max(...similarities),
+      matchType: pairs.every(pair => pair.matchType === 'exact') ? 'exact' : 'structural'
+    };
+  });
+
+  return groups.sort(
+    (a, b) => b.functions.length - a.functions.length || b.maxSimilarity - a.maxSimilarity
+  );
+}
+
+export { findJsFiles, findDuplicates, groupDuplicates };

@@ -155,6 +155,32 @@ describe('find-duplicates.js CLI', () => {
       }
     });
 
+    test('console output clusters pairs into groups with a match-type label', () => {
+      const result = runCli([tmpDir, '70']);
+      assert.strictEqual(result.status, 0);
+      assert.match(result.stdout, /in \d+ groups?:/);
+      assert.match(result.stdout, /📦 Group #1 - \d+ functions - Similarity: [\d.]+%/);
+      assert.match(result.stdout, /\((exact copies|structural)\)/);
+      assert.match(result.stdout, /Summary: \d+ duplicate groups? \(\d+ function pairs?\)/);
+    });
+
+    test('--json includes groups with similarity range and matchType', () => {
+      const parsed = JSON.parse(runCli([tmpDir, '70', '--json']).stdout);
+
+      assert.ok(Array.isArray(parsed.groups));
+      assert.ok(parsed.groups.length >= 1);
+      const group = parsed.groups[0];
+      assert.ok(group.functions.length >= 2);
+      assert.strictEqual(typeof group.similarity.min, 'number');
+      assert.strictEqual(typeof group.similarity.max, 'number');
+      assert.ok(group.similarity.min <= group.similarity.max);
+      assert.strictEqual(typeof group.pairCount, 'number');
+      assert.ok(['exact', 'structural'].includes(group.matchType));
+
+      // Pairs are also labeled individually
+      assert.ok(['exact', 'structural'].includes(parsed.duplicates[0].matchType));
+    });
+
     test('--json reports an empty duplicates array when nothing matches', () => {
       const result = runCli([tmpDir, '99', '--json']);
       assert.strictEqual(result.status, 0);

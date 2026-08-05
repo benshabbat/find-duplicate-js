@@ -92,7 +92,8 @@ function parsePortFlag(args) {
 /**
  * Extracts an `--exclude <names>` / `--exclude=<names>` flag: a
  * comma-separated list of extra directory names to skip while scanning
- * (on top of the built-in node_modules/.git/dist/build/coverage skip list).
+ * (on top of the built-in skip list of package/VCS/build/cache directories -
+ * see SKIPPED_DIRECTORIES in find-duplicates-scanner.js).
  * @param {string[]} args - Raw args
  * @returns {{excludeDirs: Set<string>|undefined, args: string[]}}
  */

@@ -49,6 +49,8 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
   - Automatically removes TypeScript type annotations for semantic comparison
   - Uses Levenshtein distance algorithm for accurate similarity scoring
   - Configurable similarity threshold (default 70%)
+  - Clusters mutually similar functions into groups (10 near-identical handlers = 1 group, not 45 pair rows)
+  - Distinguishes **exact copies** from **structural** matches (same shape, different identifiers/strings)
 
 - **🎨 Two Usage Modes**:
   - **CLI Mode**: Quick terminal-based analysis with detailed text output
@@ -65,7 +67,7 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
 
 - **⚡ Performance**:
   - Recursively scans entire project directories
-  - Automatically skips `node_modules`, `.git`, `dist`, `build`, and `coverage` folders
+  - Automatically skips `node_modules`, `.git`, `dist`, `build`, `out`, and `coverage` folders, plus framework build/cache directories (`.next`, `.nuxt`, `.output`, `.svelte-kit`, `.astro`, `.angular`, `.turbo`, `.vercel`, `.cache`, `.parcel-cache`)
   - Handles `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, and `.cts` files
   - Skips declaration files (`.d.ts`) and minified bundles (`.min.js`)
 
@@ -133,24 +135,33 @@ find-duplicate . 75
 
 📊 Found 42 functions total
 
-⚠️  Found 3 pairs of similar functions:
+⚠️  Found 3 pairs of similar functions in 2 groups:
 
 ═══════════════════════════════════════════════════════════════════════════════════════
 
-📋 Match #1 - Similarity: 95.5%
-
-   File 1: src/utils/math.js
-   Function: calculateTotal()
+📦 Group #1 - 3 functions - Similarity: 92.10-95.50% (structural)
+   • calculateTotal()  src/utils/math.js:12
+   • getTotalPrice()  src/components/cart.js:8
+   • sumOrder()  src/orders/summary.js:31
    Code: const sum = items.reduce((acc, item) => acc + item.price, 0)...
-
-   File 2: src/components/cart.js
-   Function: getTotalPrice()
-   Code: const total = products.reduce((acc, prod) => acc + prod.pri...
 
 ─────────────────────────────────────────────────────────────────────────────────────
 
-💡 Summary: Found 3 duplicate function pairs
+📦 Group #2 - 2 functions - Similarity: 100.00% (exact copies)
+   • formatDate()  src/utils/date.js:4
+   • formatDate()  src/reports/helpers.js:9
+   Code: const d = new Date(value); return d.toISOString().slice(0, 1...
+
+─────────────────────────────────────────────────────────────────────────────────────
+
+ℹ️  Similarity is measured after normalizing identifiers and string literals.
+   "structural" groups share the same shape but differ in names or literals;
+   only "exact copies" are identical code (apart from formatting and comments).
+
+💡 Summary: 2 duplicate groups (3 function pairs)
 ```
+
+N functions that all match each other are reported as **one group** instead of N×(N-1)/2 pair rows, and every group is labeled either **exact copies** (identical apart from formatting/comments) or **structural** (same shape after identifier/string normalization — a structural "100%" is *not* a byte-for-byte copy).
 
 ### Web UI Mode
 
@@ -215,9 +226,8 @@ All security features are enabled by default with no configuration needed.
 Recursively scans your project directory and finds all `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, and `.cts` files, while intelligently skipping:
 - `node_modules`
 - `.git`
-- `dist`
-- `build`
-- `coverage`
+- Generic build outputs: `dist`, `build`, `out`, `coverage`
+- Framework build/cache directories: `.next` (Next.js), `.nuxt`/`.output` (Nuxt), `.svelte-kit` (SvelteKit), `.astro` (Astro), `.angular` (Angular), `.turbo` (Turborepo), `.vercel` (Vercel), `.cache` (Gatsby and others), `.parcel-cache` (Parcel)
 - Declaration files (`.d.ts`, `.d.mts`, `.d.cts`) and minified bundles (`.min.js`)
 
 ### 2. **Function Extraction**
@@ -268,8 +278,8 @@ Uses the **Levenshtein Distance** algorithm to calculate how similar two functio
 
 ### 5. **Results Presentation**
 Presents findings in an easy-to-understand format (CLI or Web UI) showing:
-- Which functions are similar
-- Their similarity percentage
+- Groups of mutually similar functions (instead of a quadratic list of pairs)
+- Their similarity percentage range and match type (exact copies vs. structural)
 - File locations
 - Code previews
 
@@ -289,7 +299,7 @@ find-duplicate --help
 - `threshold` (optional): Similarity percentage (1-100). Default: `70`. Invalid or out-of-range values exit with an error instead of silently falling back to the default.
 - `--ui` (optional flag): Launch the interactive web UI instead of printing to the terminal
 - `--port <number>` (optional): Port for the web UI server (only with `--ui`; default: `2712`)
-- `--exclude <names>` (optional): Comma-separated extra directory names to skip, e.g. `--exclude vendor,generated` (in addition to the built-in `node_modules`, `.git`, `dist`, `build`, `coverage`)
+- `--exclude <names>` (optional): Comma-separated extra directory names to skip, e.g. `--exclude vendor,generated` (in addition to the built-in skip list: `node_modules`, `.git`, `dist`, `build`, `out`, `coverage`, and framework build/cache dirs like `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.vercel`, `.cache`)
 - `--min-length <chars>` (optional): Ignore functions whose normalized body is shorter than this many characters. Useful for filtering out trivial one-liners (getters, `return true;` stubs) that otherwise match each other at 100%
 - `--json` (optional flag): Print results as JSON for scripting/CI (cannot be combined with `--ui`)
 - `--fail-on-duplicates` (optional flag): Exit with code 1 if any duplicates are found — made for CI gates (cannot be combined with `--ui`)
@@ -313,12 +323,26 @@ find-duplicate ./src 80 --json
   "duplicates": [
     {
       "similarity": 95.5,
+      "matchType": "structural",
       "func1": { "name": "validateUser", "file": "src/auth.js", "line": 10 },
       "func2": { "name": "checkCredentials", "file": "src/login.js", "line": 3 }
+    }
+  ],
+  "groups": [
+    {
+      "similarity": { "min": 95.5, "max": 95.5 },
+      "matchType": "structural",
+      "pairCount": 1,
+      "functions": [
+        { "name": "validateUser", "file": "src/auth.js", "line": 10 },
+        { "name": "checkCredentials", "file": "src/login.js", "line": 3 }
+      ]
     }
   ]
 }
 ```
+
+`duplicates` lists every matching pair; `groups` clusters mutually similar functions (one entry per connected cluster, members sorted by file). `matchType` is `"exact"` when the code is identical apart from formatting and comments, or `"structural"` when it only matches after identifier/string normalization.
 
 ### Examples:
 
@@ -464,7 +488,7 @@ function checkCredentials(user, pass) {
 }
 ```
 
-**Result**: 100% similarity - Same logic, different names
+**Result**: 100% similarity - Same logic, different names (reported as a **structural** match, since the code isn't a byte-for-byte copy)
 
 ### Example 2: Similar Functions
 
@@ -526,13 +550,28 @@ Analyzes the directory and returns:
 {
   duplicates: [
     {
-      func1: { name, body, originalBody, filePath, startIndex },
-      func2: { name, body, originalBody, filePath, startIndex },
-      similarity: "95.50"
+      func1: { name, body, originalBody, filePath, startIndex, line },
+      func2: { name, body, originalBody, filePath, startIndex, line },
+      similarity: "95.50",
+      matchType: "structural" // or "exact" for byte-identical code
     }
   ],
   totalFunctions: 42
 }
+```
+
+#### `groupDuplicates(duplicates)`
+Clusters the `duplicates` array from `findDuplicates()` into groups of mutually similar functions (connected components). Returns one entry per cluster, largest first:
+```javascript
+[
+  {
+    functions: [/* member function objects, sorted by file then line */],
+    pairs: [/* the duplicate pairs connecting them */],
+    minSimilarity: 85.44,
+    maxSimilarity: 97.6,
+    matchType: "structural" // "exact" only if every pair is an exact copy
+  }
+]
 ```
 
 #### `calculateSimilarity(code1, code2)`
@@ -669,14 +708,16 @@ The tool only accesses files within your project directory.
 **A:** Yes! The tool automatically skips:
 - `node_modules/`
 - `.git/`
-- `dist/`
-- `build/`
-- `coverage/`
+- Build outputs: `dist/`, `build/`, `out/`, `coverage/`
+- Framework build/cache dirs: `.next/`, `.nuxt/`, `.output/`, `.svelte-kit/`, `.astro/`, `.angular/`, `.turbo/`, `.vercel/`, `.cache/`, `.parcel-cache/`
 
 For custom exclusions, use the `--exclude` flag:
 ```bash
 find-duplicate ./src --exclude vendor,generated
 ```
+
+### Q: What does a "structural" 100% mean?
+**A:** Similarity is computed after normalizing identifiers and string literals, so two functions with the same shape but different variable names, property names, or strings score 100%. The report labels those **structural**; only groups labeled **exact copies** are identical code (apart from formatting and comments). A structural match is still a useful signal — it usually means the pair is a candidate for extracting one parameterized function — but it is not a copy-paste.
 
 ### Q: How do I use this in CI/CD?
 **A:** Use `--fail-on-duplicates`, which exits with code 1 when duplicates are found:
