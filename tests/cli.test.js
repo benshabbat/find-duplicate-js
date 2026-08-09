@@ -124,7 +124,10 @@ describe('find-duplicates.js CLI', () => {
     });
 
     test('reports no duplicates above the pair\'s similarity score', () => {
-      const result = runCli([tmpDir, '90']);
+      // 99 rather than a value just above the pair's actual score: the two
+      // bodies differ only by a trailing `+ 1`, and normalization keeps their
+      // shared const/return skeleton, so they land in the low 90s.
+      const result = runCli([tmpDir, '99']);
       assert.strictEqual(result.status, 0);
       assert.match(result.stdout, /No duplicate functions found/);
     });
@@ -263,6 +266,127 @@ describe('find-duplicates.js CLI', () => {
         const result = runCli([tmpDir, '70', '--min-length', bad]);
         assert.strictEqual(result.status, 1, `min-length ${bad} should be rejected`);
         assert.match(result.stderr, /--min-length must be a non-negative integer/);
+      }
+    });
+
+    test('--json output is stamped with a schema and tool version', () => {
+      const parsed = JSON.parse(runCli([tmpDir, '70', '--json']).stdout);
+      assert.strictEqual(parsed.schemaVersion, 1);
+      assert.strictEqual(parsed.tool.name, 'find-duplicate-js');
+      assert.strictEqual(parsed.tool.version, pkgVersion);
+    });
+
+    test('--output writes the report to a file instead of stdout', () => {
+      const target = path.join(tmpDir, 'report.json');
+      const result = runCli([tmpDir, '70', '--json', '--output', target]);
+
+      assert.strictEqual(result.status, 0);
+      assert.match(result.stdout, /Report written to/);
+      // The point of the flag: stdout carries the confirmation, not the report.
+      assert.strictEqual(result.stdout.includes('"duplicates"'), false);
+
+      const parsed = JSON.parse(fs.readFileSync(target, 'utf8'));
+      assert.ok(parsed.duplicates.length >= 1);
+      fs.rmSync(target, { force: true });
+    });
+
+    test('--output works for the human-readable report too', () => {
+      const target = path.join(tmpDir, 'report.txt');
+      const result = runCli([tmpDir, '70', '--output', target]);
+
+      assert.strictEqual(result.status, 0);
+      const report = fs.readFileSync(target, 'utf8');
+      assert.match(report, /Found \d+ pairs? of similar functions/);
+      fs.rmSync(target, { force: true });
+    });
+
+    test('--output reports an unwritable destination instead of failing silently', () => {
+      const result = runCli([tmpDir, '70', '--json', '--output', path.join(tmpDir, 'no-such-dir', 'r.json')]);
+      assert.strictEqual(result.status, 1);
+      assert.match(result.stderr, /Could not write to/);
+    });
+
+    test('--output cannot be combined with --ui', () => {
+      const result = runCli([tmpDir, '--ui', '--output', 'r.json']);
+      assert.strictEqual(result.status, 1);
+      assert.match(result.stderr, /--output cannot be combined with --ui/);
+    });
+
+    test('--gitignore skips files git would ignore', () => {
+      const ignoredDir = path.join(tmpDir, 'generated');
+      fs.mkdirSync(ignoredDir, { recursive: true });
+      fs.writeFileSync(path.join(ignoredDir, 'c.js'), 'function addNumbers(x, y) { const total = x + y; return total; }\n');
+      fs.writeFileSync(path.join(tmpDir, '.gitignore'), 'generated/\n');
+
+      try {
+        const without = JSON.parse(runCli([tmpDir, '70', '--json']).stdout);
+        const with_ = JSON.parse(runCli([tmpDir, '70', '--json', '--gitignore']).stdout);
+        assert.strictEqual(without.filesScanned, 3);
+        assert.strictEqual(with_.filesScanned, 2);
+      } finally {
+        fs.rmSync(ignoredDir, { recursive: true, force: true });
+        fs.rmSync(path.join(tmpDir, '.gitignore'), { force: true });
+      }
+    });
+
+    test('a config file supplies defaults and flags override them', () => {
+      const configPath = path.join(tmpDir, 'fd.json');
+      fs.writeFileSync(configPath, JSON.stringify({ directory: tmpDir, threshold: 95, minLength: 4 }));
+
+      try {
+        const fromConfig = JSON.parse(runCli(['--json', '--config', configPath]).stdout);
+        assert.strictEqual(fromConfig.threshold, 95);
+
+        // An explicit positional threshold beats the configured one.
+        const overridden = JSON.parse(runCli([tmpDir, '70', '--json', '--config', configPath]).stdout);
+        assert.strictEqual(overridden.threshold, 70);
+      } finally {
+        fs.rmSync(configPath, { force: true });
+      }
+    });
+
+    test('.findduplicaterc.json is picked up from the working directory', () => {
+      const configPath = path.join(tmpDir, '.findduplicaterc.json');
+      fs.writeFileSync(configPath, JSON.stringify({ threshold: 93 }));
+
+      try {
+        const parsed = JSON.parse(runCli(['--json'], { cwd: tmpDir }).stdout);
+        assert.strictEqual(parsed.threshold, 93);
+      } finally {
+        fs.rmSync(configPath, { force: true });
+      }
+    });
+
+    test('a config file with an unknown key is rejected rather than ignored', () => {
+      const configPath = path.join(tmpDir, 'typo.json');
+      fs.writeFileSync(configPath, JSON.stringify({ minLenght: 5 }));
+
+      try {
+        const result = runCli([tmpDir, '--config', configPath]);
+        assert.strictEqual(result.status, 1);
+        assert.match(result.stderr, /Unknown key in/);
+        assert.match(result.stderr, /minLenght/);
+      } finally {
+        fs.rmSync(configPath, { force: true });
+      }
+    });
+
+    test('a missing --config file is a hard error', () => {
+      const result = runCli([tmpDir, '--config', path.join(tmpDir, 'absent.json')]);
+      assert.strictEqual(result.status, 1);
+      assert.match(result.stderr, /does not exist/);
+    });
+
+    test('a malformed config file is a hard error', () => {
+      const configPath = path.join(tmpDir, 'broken.json');
+      fs.writeFileSync(configPath, '{ not json');
+
+      try {
+        const result = runCli([tmpDir, '--config', configPath]);
+        assert.strictEqual(result.status, 1);
+        assert.match(result.stderr, /Could not parse config file/);
+      } finally {
+        fs.rmSync(configPath, { force: true });
       }
     });
 

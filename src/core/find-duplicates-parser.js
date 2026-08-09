@@ -110,118 +110,152 @@ function getLineNumber(lineOffsets, index) {
   return lo + 1;
 }
 
+// Words that can appear where a method name is expected but introduce a
+// statement rather than a function: `if (x) {`, `return (a) ? ... : {` and
+// friends all look like `name(...) {` to a line-anchored pattern.
+const STATEMENT_KEYWORDS = new Set([
+  'if', 'for', 'while', 'switch', 'catch', 'with', 'do', 'else', 'try',
+  'finally', 'case', 'default', 'function', 'return', 'throw', 'typeof',
+  'new', 'delete', 'await', 'yield', 'void', 'in', 'of'
+]);
+
+/**
+ * Given the index of a parameter list's opening parenthesis, returns the index
+ * of the `{` that starts the function body, or -1 if this is not a function.
+ * @param {string} code - The source code
+ * @param {number} openParenIndex - Index of the `(` opening the parameter list
+ * @param {boolean} expectArrow - True for arrow functions, where a `=>` must
+ *   sit between the parameter list and the body
+ * @returns {number} Index of the body's opening brace, or -1
+ * @description Skips an optional TypeScript return type annotation between the
+ * closing parenthesis and the body. Used by every pattern below so that a
+ * parameter list spanning several lines - which a `\([^)]*\)` regex cannot
+ * match - is handled by the same brace/string-aware scanner everywhere.
+ */
+function findBodyBrace(code, openParenIndex, expectArrow) {
+  const closingParenIndex = findMatchingParen(code, openParenIndex);
+  if (closingParenIndex === -1) return -1;
+
+  let cursor = closingParenIndex + 1;
+  const skipSpace = () => {
+    while (cursor < code.length && /\s/.test(code[cursor])) cursor++;
+  };
+
+  skipSpace();
+
+  // TypeScript return type: `): ReturnType =>` or `): ReturnType {`
+  if (code[cursor] === ':') {
+    const terminator = expectArrow ? code.indexOf('=>', cursor) : code.indexOf('{', cursor);
+    if (terminator === -1) return -1;
+    cursor = terminator;
+  }
+
+  if (expectArrow) {
+    if (code[cursor] !== '=' || code[cursor + 1] !== '>') return -1;
+    cursor += 2;
+    skipSpace();
+  }
+
+  // Only concise bodies wrapped in braces are extracted; `x => x + 1` has no
+  // block to compare.
+  return code[cursor] === '{' ? cursor : -1;
+}
+
 /**
  * Extracts all functions from JavaScript/TypeScript code
  * @param {string} code - The JavaScript/TypeScript source code to parse
  * @param {string} filePath - The path to the source file (for tracking)
  * @returns {Array<{name: string, body: string, originalBody: string, filePath: string, startIndex: number, line: number}>} Array of extracted function objects
- * @description Identifies and extracts arrow functions, function declarations, class methods, async functions, and TypeScript functions
+ * @description Identifies and extracts arrow functions (parenthesized and
+ * single-parameter), function declarations and expressions, generators,
+ * default-exported and anonymous functions, object-literal methods and
+ * properties, class methods, class field arrows, getters/setters, async
+ * functions, and their TypeScript-annotated forms.
  */
 function extractFunctions(code, filePath) {
   const functions = [];
-  const functionPositions = new Map();
+  const seenBodies = new Set();
   const lineOffsets = buildLineOffsets(code);
 
   // Find all functions and their positions
   const functionMatches = [];
-
-  // 1. Arrow functions with const/let/var (with optional TypeScript type annotations)
-  // Improved regex to handle complex parameters and type annotations
-  const arrowPattern = /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?::\s*[^=]+)?\s*=\s*(?:async\s*)?\(/g;
   let match;
-  while ((match = arrowPattern.exec(code)) !== null) {
-    const startIndex = match.index;
-    const nameEndIndex = match.index + match[0].length;
 
-    // Find the closing parenthesis of parameters (handle nested parens)
-    const closingParenIndex = findMatchingParen(code, nameEndIndex - 1);
-
-    if (closingParenIndex !== -1) {
-      // Check if this is followed by => (with optional return type)
-      let afterParen = code.substring(closingParenIndex + 1).trimStart();
-
-      // Skip TypeScript return type annotation if present (e.g., ): ReturnType =>)
-      if (afterParen.startsWith(':')) {
-        const arrowPos = afterParen.indexOf('=>');
-        if (arrowPos !== -1) {
-          afterParen = afterParen.substring(arrowPos).trimStart();
-        }
-      }
-
-      if (afterParen.startsWith('=>')) {
-        const arrowIndex = closingParenIndex + 1 + (code.substring(closingParenIndex + 1).length - afterParen.length);
-        const afterArrow = code.substring(arrowIndex + 2).trimStart();
-
-        // Only extract if followed by {
-        if (afterArrow.startsWith('{')) {
-          const braceIndex = arrowIndex + 2 + (code.substring(arrowIndex + 2).length - afterArrow.length);
-          functionMatches.push({
-            name: match[1],
-            start: startIndex,
-            bodyStart: braceIndex,
-            type: 'arrow'
-          });
-        }
-      }
+  /**
+   * Records a candidate whose parameter list starts at openParenIndex.
+   * @param {string} name - Function name to report
+   * @param {number} start - Index the declaration starts at (used for line
+   *   numbers and for preferring the outermost match on a shared body)
+   * @param {number} openParenIndex - Index of the parameter list's `(`
+   * @param {boolean} expectArrow - Whether a `=>` must follow the parameters
+   * @param {string} type - Diagnostic label for the match kind
+   */
+  const addCandidate = (name, start, openParenIndex, expectArrow, type) => {
+    const bodyStart = findBodyBrace(code, openParenIndex, expectArrow);
+    if (bodyStart !== -1) {
+      functionMatches.push({ name, start, bodyStart, type });
     }
+  };
+
+  // 1. Arrow functions bound to a declaration, an object property or a class
+  //    field: `const f = (a) => {}`, `handler: (a) => {}`, `field = (a) => {}`.
+  //    The `[:=]` is guarded so comparisons (`a === (b)`), arrows (`=>`) and
+  //    relational operators are not mistaken for a binding.
+  const ARROW_BINDING = /(?:(?:const|let|var)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?::\s*[^=;,{}()]{1,200})?\s*(?<![=!<>])([:=])(?![=>])\s*(?:async\s+)?\(/g;
+  while ((match = ARROW_BINDING.exec(code)) !== null) {
+    addCandidate(match[1], match.index, match.index + match[0].length - 1, true, 'arrow');
   }
 
-  // 2. Function declarations (with optional TypeScript type annotations)
-  const funcPattern = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:<[^>]+>)?\s*\(/g;
-  while ((match = funcPattern.exec(code)) !== null) {
-    const startIndex = match.index;
-    const parenStart = match.index + match[0].length - 1;
-
-    // Find the closing parenthesis
-    const closingParenIndex = findMatchingParen(code, parenStart);
-
-    if (closingParenIndex !== -1) {
-      let afterParen = code.substring(closingParenIndex + 1).trimStart();
-
-      // Skip TypeScript return type annotation if present
-      if (afterParen.startsWith(':')) {
-        const bracePos = afterParen.indexOf('{');
-        if (bracePos !== -1) {
-          afterParen = afterParen.substring(bracePos).trimStart();
-        }
-      }
-
-      // Check if followed by {
-      if (afterParen.startsWith('{')) {
-        const braceIndex = closingParenIndex + 1 + (code.substring(closingParenIndex + 1).length - afterParen.length);
-        functionMatches.push({
-          name: match[1],
-          start: startIndex,
-          bodyStart: braceIndex,
-          type: 'function'
-        });
-      }
-    }
+  // 2. Single-parameter arrows without parentheses: `const f = x => {}`,
+  //    `onClick: e => {}`. The parameter has no parens, so there is no list to
+  //    scan - locate the brace directly after the `=>`.
+  const ARROW_SINGLE_PARAM = /(?:(?:const|let|var)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?<![=!<>])([:=])(?![=>])\s*(?:async\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>\s*\{/g;
+  while ((match = ARROW_SINGLE_PARAM.exec(code)) !== null) {
+    functionMatches.push({
+      name: match[1],
+      start: match.index,
+      bodyStart: match.index + match[0].length - 1,
+      type: 'arrow-single-param'
+    });
   }
 
-  // 3. Methods (class methods, object methods) with optional TypeScript annotations
-  const methodRegex = /^\s*(?:public|private|protected|static|async)?\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:<[^>]+>)?\s*\([^)]*\)\s*(?::\s*[^{]+)?\s*\{/gm;
-  while ((match = methodRegex.exec(code)) !== null) {
-    const name = match[1];
-    // Skip JavaScript keywords
-    const jsKeywords = ['if', 'for', 'while', 'switch', 'catch', 'with'];
-    if (jsKeywords.includes(name)) {
+  // 3. Function expressions and generators bound to a name:
+  //    `const f = function () {}`, `const g = function* () {}`,
+  //    `run: async function () {}`.
+  const FUNCTION_EXPRESSION = /(?:(?:const|let|var)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?<![=!<>])([:=])(?![=>])\s*(?:async\s+)?function\s*\*?\s*(?:[a-zA-Z_$][a-zA-Z0-9_$]*)?\s*(?:<[^>]+>)?\s*\(/g;
+  while ((match = FUNCTION_EXPRESSION.exec(code)) !== null) {
+    addCandidate(match[1], match.index, match.index + match[0].length - 1, false, 'function-expression');
+  }
+
+  // 4. Function declarations, including generators and anonymous
+  //    `export default function () {}`. The name is optional so the anonymous
+  //    default export is still compared - it is as copy-pasteable as any other.
+  const FUNCTION_DECLARATION = /(?:export\s+default\s+)?(?:async\s+)?function\s*\*?\s*([a-zA-Z_$][a-zA-Z0-9_$]*)?\s*(?:<[^>]+>)?\s*\(/g;
+  while ((match = FUNCTION_DECLARATION.exec(code)) !== null) {
+    const name = match[1] || (match[0].includes('default') ? 'default' : 'anonymous');
+    addCandidate(name, match.index, match.index + match[0].length - 1, false, 'function');
+  }
+
+  // 5. Methods (class methods, object methods), getters/setters and method
+  //    generators, with optional TypeScript annotations. The parameter list is
+  //    located with findMatchingParen rather than matched in the regex, so
+  //    parameters spread over several lines are handled.
+  const METHOD = /^[ \t]*(?:(?:public|private|protected|static|readonly|override|abstract|async|get|set)\s+)*\*?\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:<[^>]+>)?\s*\(/gm;
+  while ((match = METHOD.exec(code)) !== null) {
+    if (STATEMENT_KEYWORDS.has(match[1])) {
       continue;
     }
 
     // Check that it's not a function declaration or arrow function
     const before = code.substring(Math.max(0, match.index - 20), match.index);
     if (!/(?:function|const|let|var|=|=>)\s*$/.test(before)) {
-      functionMatches.push({
-        name: match[1],
-        start: match.index,
-        bodyStart: match.index + match[0].length - 1,
-        type: 'method'
-      });
+      addCandidate(match[1], match.index, match.index + match[0].length - 1, false, 'method');
     }
   }
 
-  // Sort by position
+  // Sort by position so that when two patterns land on the same body, the one
+  // that started earliest - the most complete match, and the one carrying the
+  // better name - is the one kept by the dedup below.
   functionMatches.sort((a, b) => a.start - b.start);
 
   // Extract each function body
@@ -230,10 +264,14 @@ function extractFunctions(code, filePath) {
 
     if (body && body.trim().length > 0) {
       const normalizedBody = normalizeCode(body);
-      const uniqueKey = `${filePath}:${funcMatch.start}`;
+      // Keyed on the body, not the declaration start: several patterns can
+      // legitimately match the same function from different offsets (e.g.
+      // `const f = function () {}` is both a binding and an expression), and
+      // it is the body that decides whether they are the same function.
+      const uniqueKey = `${filePath}:${funcMatch.bodyStart}`;
 
-      if (!functionPositions.has(uniqueKey)) {
-        functionPositions.set(uniqueKey, true);
+      if (!seenBodies.has(uniqueKey)) {
+        seenBodies.add(uniqueKey);
 
         // Extract JSX components from original body (before normalization)
         // Check file extension OR check if code contains JSX

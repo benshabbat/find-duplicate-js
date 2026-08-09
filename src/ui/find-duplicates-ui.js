@@ -6,8 +6,16 @@ import path from "path";
 import crypto from "crypto";
 import { spawn, exec } from "child_process";
 import { pathToFileURL } from "url";
-import { findDuplicates, findJsFiles } from "../core/find-duplicates-core.js";
-import { parseDirectoryArgs, parsePortFlag, parseExcludeFlag, parseMinLengthFlag } from "../core/find-duplicates-cli-args.js";
+import { findDuplicates, collectSourceFiles } from "../core/find-duplicates-core.js";
+import {
+  parseDirectoryArgs,
+  parsePortFlag,
+  parseExcludeFlag,
+  parseMinLengthFlag,
+  parseConfigFlag,
+  loadConfig,
+  excludeSetFromConfig
+} from "../core/find-duplicates-cli-args.js";
 import { generateHTML, escapeHtml, escapeJsString } from "./find-duplicates-report.js";
 
 const DEFAULT_PORT = 2712;
@@ -128,7 +136,7 @@ function createServer(directory, threshold, scanOptions = {}) {
     try {
       console.log("\n🔍 Analyzing JavaScript files...");
 
-      const jsFiles = findJsFiles(directory, [], scanOptions.excludeDirs || null);
+      const jsFiles = collectSourceFiles(directory, scanOptions);
       // Reuse the file list we already walked instead of having
       // findDuplicates() walk the directory tree a second time.
       const duplicates = findDuplicates(directory, threshold, jsFiles, scanOptions);
@@ -363,15 +371,36 @@ Arguments:
 Options:
   --port <number>        Port to listen on (default: ${DEFAULT_PORT})
   --exclude <names>      Comma-separated extra directory names to skip
+  --gitignore            Also skip files and directories ignored by .gitignore
   --min-length <chars>   Ignore functions with a normalized body shorter than this
+  --config <file>        Read defaults from a JSON config file
+                         (default: .findduplicaterc.json, if present)
   -h, --help             Show this help message and exit
 `);
     process.exit(0);
   }
 
-  const { port, args: argsWithoutPort } = parsePortFlag(args);
-  const { excludeDirs, args: argsWithoutExclude } = parseExcludeFlag(argsWithoutPort);
-  const { minLength, args: positionalArgs } = parseMinLengthFlag(argsWithoutExclude);
+  const { config: configPath, args: argsWithoutConfig } = parseConfigFlag(args);
+  const config = loadConfig(configPath);
+  const useGitignore = argsWithoutConfig.includes('--gitignore') || config.gitignore === true;
+
+  const { port: portFlag, args: argsWithoutPort } = parsePortFlag(argsWithoutConfig);
+  const { excludeDirs: excludeFlag, args: argsWithoutExclude } = parseExcludeFlag(argsWithoutPort);
+  const { minLength: minLengthFlag, args: argsWithoutMinLength } = parseMinLengthFlag(argsWithoutExclude);
+  const positionalArgs = argsWithoutMinLength.filter(arg => arg !== '--gitignore');
+
+  // Flags win over the config file, exactly as in the main CLI.
+  const port = portFlag !== undefined ? portFlag : config.port;
+  const excludeDirs = excludeFlag !== undefined ? excludeFlag : excludeSetFromConfig(config.exclude);
+  const minLength = minLengthFlag !== undefined ? minLengthFlag : config.minLength;
+
+  if (positionalArgs[0] === undefined && config.directory !== undefined) {
+    positionalArgs[0] = String(config.directory);
+  }
+  if (positionalArgs[1] === undefined && config.threshold !== undefined) {
+    positionalArgs[1] = String(config.threshold);
+  }
+
   const { directory, threshold } = parseDirectoryArgs(positionalArgs);
-  startServer(directory, threshold, port, { excludeDirs, minLength });
+  startServer(directory, threshold, port, { excludeDirs, minLength, gitignore: useGitignore });
 }
