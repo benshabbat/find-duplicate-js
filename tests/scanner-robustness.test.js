@@ -47,18 +47,63 @@ describe('findJsFiles survives a hostile directory tree', () => {
     fs.rmSync(link, { force: true });
   });
 
-  test('an unreadable directory warns and the rest of the scan continues', (t) => {
+  test('a directory that fails to read warns and the rest of the scan continues', () => {
     const locked = path.join(tmpDir, 'locked');
+    fs.mkdirSync(locked, { recursive: true });
+
+    // The failure is injected rather than produced with chmod so the behavior
+    // is covered on every platform: Windows does not enforce POSIX directory
+    // permissions at all, and root ignores them. What matters is that readdir
+    // throwing for one directory does not cost us the other files.
+    const realReaddirSync = fs.readdirSync;
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (message) => warnings.push(message);
+    fs.readdirSync = (target, ...rest) => {
+      if (path.resolve(String(target)) === path.resolve(locked)) {
+        const error = new Error(`EACCES: permission denied, scandir '${locked}'`);
+        error.code = 'EACCES';
+        throw error;
+      }
+      return realReaddirSync(target, ...rest);
+    };
+
+    try {
+      const files = findJsFiles(tmpDir);
+      assert.ok(
+        files.some(file => file.endsWith('x.js')),
+        'files outside the unreadable directory should still be found'
+      );
+      assert.ok(
+        warnings.some(warning => /Skipping unreadable directory/.test(warning)),
+        'the skipped directory should be reported'
+      );
+    } finally {
+      fs.readdirSync = realReaddirSync;
+      console.warn = originalWarn;
+      fs.rmSync(locked, { recursive: true, force: true });
+    }
+  });
+
+  test('a directory made unreadable by permissions is skipped', (t) => {
+    const locked = path.join(tmpDir, 'locked-perms');
     fs.mkdirSync(locked, { recursive: true });
     fs.chmodSync(locked, 0o000);
 
-    // Root ignores directory permissions, so this can only be exercised as a
-    // normal user; the point of the test is that one bad directory does not
-    // cost us the other files.
-    if (process.getuid && process.getuid() === 0) {
+    // Windows has no POSIX directory permissions and root ignores them, so
+    // probe whether the chmod actually took effect instead of guessing from
+    // the platform. Where it did not, the injected-failure test above is the
+    // coverage; this one only adds the end-to-end confirmation.
+    let enforced = false;
+    try {
+      fs.readdirSync(locked);
+    } catch {
+      enforced = true;
+    }
+    if (!enforced) {
       fs.chmodSync(locked, 0o755);
       fs.rmSync(locked, { recursive: true, force: true });
-      t.skip('running as root: directory permissions are not enforced');
+      t.skip('directory permissions are not enforced in this environment');
       return;
     }
 
