@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.11.0] - 2026-08-11
 
 ### 🐛 Fixed
 - **`npx find-duplicate-js` failed outright.** Neither bin was named after the package, so npm refused to guess between them and exited with `could not determine executable to run`; the only way in was the roundabout `npx -p find-duplicate-js find-duplicate`. `find-duplicate-js` is now a bin alias for the same CLI, alongside the existing `find-duplicate`.
