@@ -79,6 +79,12 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
 
 ## 📦 Installation
 
+### Without Installing
+
+```bash
+npx find-duplicate-js ./src
+```
+
 ### Global Installation (Recommended)
 
 ```bash
