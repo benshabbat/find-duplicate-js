@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Fixed
+- **Normalization erased control flow, producing false positives.** Every word — keywords included — was replaced with `V`, so `if (user) { return user.name; }` and `while (list) { delete list.head; }` both normalized to `V(V){VV.V;}`. Two functions sharing nothing but their punctuation scored as duplicates; a realistic pair (one branching and returning, the other looping and throwing) was reported at **85.71% similar**. Reserved words and value literals (`true`/`false`/`null`/`undefined`) are now preserved, so the normalized form still records what the code *does* while still erasing the identifiers and string literals a copy-paste renames.
+- **A symlink pointing at an ancestor directory crashed the scan.** The walk followed symlinked directories without tracking where it had been, so `sub/link -> ..` recursed through `sub/link/sub/link/...` until the process died on `ELOOP`. Real paths of symlinked directories are now remembered and visited once.
+- **One unreadable directory aborted the whole scan.** `readdirSync` was uncaught, so a single `EACCES` threw away the other files. Unreadable directories now warn on stderr and are skipped; broken symlinks are skipped silently.
+- **Most modern function forms were never extracted.** On a file containing seven common declaration styles, only one (a plain method) was found. Now also extracted: single-parameter arrows without parentheses (`x => {}`), arrows assigned to object properties and class fields (`handler: (req) => {}`, `onClick = (e) => {}`), function expressions, generators, anonymous and named `export default function`, getters and setters, and methods whose parameter lists span several lines (the old method pattern could not match across a newline).
+
+### ✨ Added
+- `--gitignore` flag (both bins): also skip whatever `.gitignore` excludes, including nested ignore files. Supports negation (`!`), directory-only (`build/`), anchoring, `*`/`**`/`?` and character classes; verified against real `git check-ignore`.
+- `--output <file>` flag: write the report to a file instead of stdout, for both the human-readable and `--json` formats.
+- `--config <file>` flag and automatic `.findduplicaterc.json` discovery, so a CI invocation doesn't have to repeat every flag. Command-line flags always override the config file, and an unknown key is a hard error rather than a silent no-op.
+- `--json` output now carries `schemaVersion` and a `tool` object (`{ name, version }`), so consumers can check one number instead of sniffing for fields.
+- Progress reporting on long scans, printed to **stderr** and only when stderr is a TTY — a redirected CI log or a piped `--json` document is never polluted. Available programmatically as `findDuplicates(..., { onProgress })`.
+- `collectSourceFiles(directory, options)` is now part of the public API: the directory walk with the same `excludeDirs`/`gitignore` handling the CLI uses.
+
+### ⚡ Performance
+- A character-histogram lower bound on edit distance rejects hopeless pairs before the banded Levenshtein DP runs. Since every single-character edit changes the character multiset by at most 2, `L1 / 2` can never exceed the true distance — so the check is exact, not heuristic. On a 600-function corpus of varied shapes this cut scan time by **27%** (1378ms → 1002ms); when it cannot reject anything its fixed cost is unmeasurable.
+- Identical normalized bodies now short-circuit to distance 0 instead of running the DP.
+
+### ⚠️ Behavior changes
+- **Similarity scores shift, and thresholds may need retuning.** Preserving keywords lengthens normalized bodies and changes what the percentage measures: genuinely similar code that shares a control-flow skeleton scores *higher* (a pair in the test suite moved 83.33% → 90.48%), while code that merely shares punctuation scores much *lower* — which is the point. If you pin a threshold in CI, re-check it against your codebase after upgrading.
+- Function counts rise on codebases using the previously-missed declaration forms (object-property arrows, class fields, getters, generators, default exports). This is recovered recall, not double counting — a function is still reported once no matter how many patterns match it.
+
+### 🧪 Tests
+- 193 tests (up from 144), covering every fix above: the false-positive repro, each newly-supported function form, negative cases proving the looser patterns don't invent functions from comparisons/ternaries/multi-line calls, symlink cycles and broken links, unreadable directories, the gitignore matcher (including a differential test against real `git check-ignore`), progress reporting and its TTY gating, and the new CLI flags with their config-precedence and error paths.
+
 ## [1.10.0] - 2026-08-05
 
 ### ✨ Added

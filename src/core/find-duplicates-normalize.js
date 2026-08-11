@@ -15,12 +15,43 @@ const TYPE_ANNOTATION_BEFORE_DELIMITER = new RegExp(`:\\s*[${TYPE_CHARS}]{1,${TY
 const TYPE_ANNOTATION_AT_LINE_END = new RegExp(`:\\s*[${TYPE_CHARS}]{1,${TYPE_SPAN}}$`, 'gm');
 const GENERIC_TYPE_PARAMETERS = new RegExp(`<[${TYPE_CHARS}]{1,${TYPE_SPAN}}>`, 'g');
 
+// Words that survive identifier normalization verbatim.
+//
+// Collapsing *every* word to 'V' erases control flow along with variable
+// names, and that is not a small loss: `if (user) { return user.name; }` and
+// `while (list) { delete list.head; }` both normalize to `V(V){VV.V;}` under
+// a blanket replacement, so two functions that share nothing but their
+// punctuation score as duplicates. Keeping the reserved words means the
+// normalized form still says "this is a conditional that returns" versus
+// "this is a loop that deletes", while identifiers and literals - the parts a
+// copy-paste genuinely renames - are still erased.
+//
+// Contextual keywords (async/await/get/set/of/static/yield) are included
+// because they carry the same structural weight as the reserved ones, and the
+// value literals (true/false/null/undefined) are here because `return true`
+// and `return count` are different shapes, not different names.
+const RESERVED_WORDS = new Set([
+  'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+  'default', 'delete', 'do', 'else', 'export', 'extends', 'finally', 'for',
+  'function', 'if', 'import', 'in', 'instanceof', 'let', 'new', 'of', 'return',
+  'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
+  'while', 'with', 'yield', 'async', 'get', 'set',
+  'true', 'false', 'null', 'undefined',
+  // Placeholder that the JSX rules above substitute for component names. It
+  // has to survive so `<COMP>` (a React component) stays distinguishable from
+  // `<V>` (a plain lowercase host tag such as <div>).
+  'COMP'
+]);
+
+const IDENTIFIER = /\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g;
+
 /**
  * Normalizes code for comparison by removing irrelevant differences
  * @param {string} code - The JavaScript/TypeScript code to normalize
  * @returns {string} Normalized code with whitespace, comments, type annotations, and variable names removed
  * @description Removes: multi-line comments, single-line comments, string literals, template literals,
  * TypeScript type annotations, variable names (replaced with 'V'), and all whitespace. This allows for semantic comparison.
+ * Reserved words are deliberately left intact - see RESERVED_WORDS above for why.
  */
 function normalizeCode(code) {
   let normalized = code
@@ -45,7 +76,7 @@ function normalizeCode(code) {
     .replace(/\bas\s+[a-zA-Z_$][a-zA-Z0-9_$]*/g, '') // Remove type assertions (e.g., as string)
     .replace(/\binterface\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s*{[^}]*}/g, '') // Remove interface declarations
     .replace(/\btype\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s*=\s*[^;]+;/g, '') // Remove type aliases
-    .replace(/\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g, 'V') // Replace variable names with V
+    .replace(IDENTIFIER, word => (RESERVED_WORDS.has(word) ? word : 'V')) // Replace variable names with V, keep keywords
     .replace(/\s+/g, '') // Remove all whitespace
     .trim();
 

@@ -37,15 +37,18 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
 ## ✨ Features
 
 - **🎯 Smart Function Detection**: Recognizes multiple function types
-  - Arrow functions (`const func = () => {}`)
-  - Function declarations (`function func() {}`)
-  - Class methods and object methods
+  - Arrow functions (`const func = () => {}`), including single-parameter forms (`x => {}`)
+  - Arrows on object properties and class fields (`handler: (req) => {}`, `onClick = (e) => {}`)
+  - Function declarations (`function func() {}`) and function expressions
+  - Generators (`function* ids() {}`) and `export default function () {}`
+  - Class methods, object methods, getters and setters
   - Async functions
-  - TypeScript functions with type annotations
+  - TypeScript functions with type annotations, including multi-line parameter lists
   - Generic functions (`<T>`)
   
 - **🧠 Intelligent Code Analysis**: 
   - Normalizes code to ignore irrelevant differences (whitespace, comments, variable names)
+  - Keeps control flow intact — `if`/`return` and `while`/`delete` are not the same shape
   - Automatically removes TypeScript type annotations for semantic comparison
   - Uses Levenshtein distance algorithm for accurate similarity scoring
   - Configurable similarity threshold (default 70%)
@@ -66,10 +69,13 @@ Find Duplicate JS helps you identify these issues automatically, saving time and
 - **⚡ Performance**:
   - Recursively scans entire project directories
   - Automatically skips `node_modules`, `.git`, `dist`, `build`, `out`, and `coverage` folders, plus framework build/cache directories (`.next`, `.nuxt`, `.output`, `.svelte-kit`, `.astro`, `.angular`, `.turbo`, `.vercel`, `.cache`, `.parcel-cache`)
+  - Optionally honours your `.gitignore` (`--gitignore`)
   - Handles `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, and `.cts` files
   - Skips declaration files (`.d.ts`) and minified bundles (`.min.js`)
+  - Skips pairs that provably cannot match before running the expensive comparison
+  - Survives symlink cycles and unreadable directories instead of crashing
 
-- **🔧 Zero Configuration**: Works out of the box with sensible defaults
+- **🔧 Zero Configuration**: Works out of the box with sensible defaults — with an optional `.findduplicaterc.json` when you want to pin settings for CI
 
 ## 📦 Installation
 
@@ -228,15 +234,22 @@ Recursively scans your project directory and finds all `.js`, `.jsx`, `.ts`, `.t
 - Generic build outputs: `dist`, `build`, `out`, `coverage`
 - Framework build/cache directories: `.next` (Next.js), `.nuxt`/`.output` (Nuxt), `.svelte-kit` (SvelteKit), `.astro` (Astro), `.angular` (Angular), `.turbo` (Turborepo), `.vercel` (Vercel), `.cache` (Gatsby and others), `.parcel-cache` (Parcel)
 - Declaration files (`.d.ts`, `.d.mts`, `.d.cts`) and minified bundles (`.min.js`)
+- Anything your `.gitignore` excludes, when `--gitignore` is passed
+
+Symlinked directories are followed, but a link pointing back at one of its own ancestors is visited once rather than walked forever, and a directory that can't be read is reported and skipped instead of aborting the scan.
 
 ### 2. **Function Extraction**
-Uses sophisticated regex patterns to identify and extract:
-- Arrow functions with `const`, `let`, or `var`
-- Traditional function declarations
-- Class and object methods
+Uses layered regex patterns plus a brace/string-aware scanner to identify and extract:
+- Arrow functions bound to `const`/`let`/`var`, including single-parameter forms without parentheses (`x => { ... }`)
+- Arrow functions assigned to object properties and class fields (`handler: (req) => { ... }`, `onClick = (e) => { ... }`)
+- Traditional function declarations and function expressions
+- Generators (`function* ids() { ... }`) and anonymous default exports (`export default function () { ... }`)
+- Class and object methods, including getters and setters
 - Async functions
-- TypeScript functions with type annotations
+- TypeScript functions with type annotations, including parameter lists spread over several lines
 - Generic functions with type parameters
+
+> **Note:** extraction is pattern-based rather than a full AST parse. That keeps the tool dependency-free and fast, at the cost of missing exotic constructs. If a function form you rely on isn't found, please open an issue with a snippet.
 
 ### 3. **Code Normalization**
 Before comparison, the code is normalized to focus on logic rather than style:
@@ -246,6 +259,9 @@ Before comparison, the code is normalized to focus on logic rather than style:
 - Replaces variable names with generic placeholders
 - Replaces string literals with generic strings
 - Removes template literals
+- **Keeps reserved words** (`if`, `while`, `return`, `throw`, `true`, …) so that control flow survives normalization
+
+That last point matters more than it sounds. If every word collapses to `V`, then `if (user) { return user.name; }` and `while (list) { delete list.head; }` both become `V(V){VV.V;}` — two functions sharing nothing but punctuation score as duplicates. Keeping the keywords means the normalized form still records *what the code does*, while erasing the names a copy-paste actually changes.
 
 **Example:**
 ```javascript
@@ -264,7 +280,7 @@ function calculateSum(num1: number, num2: number): number {
 }
 
 // Both Normalized to
-V(){V=V+V;V;}
+constV=V+V;returnV;
 ```
 
 This allows the tool to recognize that TypeScript and JavaScript versions of the same function are duplicates!
@@ -299,11 +315,37 @@ find-duplicate --help
 - `--ui` (optional flag): Launch the interactive web UI instead of printing to the terminal
 - `--port <number>` (optional): Port for the web UI server (only with `--ui`; default: `2712`)
 - `--exclude <names>` (optional): Comma-separated extra directory names to skip, e.g. `--exclude vendor,generated` (in addition to the built-in skip list: `node_modules`, `.git`, `dist`, `build`, `out`, `coverage`, and framework build/cache dirs like `.next`, `.nuxt`, `.svelte-kit`, `.turbo`, `.vercel`, `.cache`)
+- `--gitignore` (optional flag): Also skip files and directories your `.gitignore` excludes, including nested `.gitignore` files. Handy when build output lives somewhere the built-in skip list doesn't know about
 - `--min-length <chars>` (optional): Ignore functions whose normalized body is shorter than this many characters. Useful for filtering out trivial one-liners (getters, `return true;` stubs) that otherwise match each other at 100%
 - `--json` (optional flag): Print results as JSON for scripting/CI (cannot be combined with `--ui`)
+- `--output <file>` (optional): Write the report to a file instead of stdout. Works for both the human-readable and `--json` formats (cannot be combined with `--ui`)
+- `--config <file>` (optional): Read defaults from a JSON config file. Without it, a `.findduplicaterc.json` in the working directory is used if present
 - `--fail-on-duplicates` (optional flag): Exit with code 1 if any duplicates are found — made for CI gates (cannot be combined with `--ui`)
 - `--version` / `-v` (optional flag): Print the installed version and exit
 - `--help` / `-h` (optional flag): Show usage help and exit
+
+### Config File
+
+Rather than repeating the same flags in every CI invocation, put them in `.findduplicaterc.json` at your project root:
+
+```json
+{
+  "directory": "./src",
+  "threshold": 80,
+  "exclude": ["vendor", "generated"],
+  "minLength": 30,
+  "gitignore": true,
+  "failOnDuplicates": true
+}
+```
+
+```bash
+find-duplicate                      # picks up .findduplicaterc.json automatically
+find-duplicate --config ci.json     # or point at a specific file
+find-duplicate ./lib 95             # command-line values always win
+```
+
+Supported keys: `directory`, `threshold`, `exclude` (array or comma-separated string), `minLength`, `port`, `output`, `ui`, `json`, `gitignore`, `failOnDuplicates`. **Command-line flags always override the config file.** An unknown key is a hard error rather than a silent no-op, so a typo like `minLenght` tells you instead of quietly changing nothing.
 
 ### JSON Output
 
@@ -315,6 +357,8 @@ find-duplicate ./src 80 --json
 
 ```json
 {
+  "schemaVersion": 1,
+  "tool": { "name": "find-duplicate-js", "version": "1.10.0" },
   "directory": "/absolute/path/to/src",
   "threshold": 80,
   "filesScanned": 12,
@@ -342,6 +386,8 @@ find-duplicate ./src 80 --json
 ```
 
 `duplicates` lists every matching pair; `groups` clusters mutually similar functions (one entry per connected cluster, members sorted by file). `matchType` is `"exact"` when the code is identical apart from formatting and comments, or `"structural"` when it only matches after identifier/string normalization.
+
+`schemaVersion` is bumped only when the shape of this document changes in a way that could break a consumer, so a script can assert on one number instead of sniffing for fields.
 
 ### Examples:
 
@@ -542,8 +588,17 @@ result.duplicates.forEach((dup, index) => {
 #### `findJsFiles(directory, fileList = [], excludeDirs = null)`
 Returns an array of all JavaScript/TypeScript file paths in the directory (`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`), excluding declaration files and minified bundles. Pass a `Set` of directory names as `excludeDirs` to skip additional directories.
 
+#### `collectSourceFiles(directory, options = {})`
+The same walk, with the options the CLI uses: `excludeDirs` (a `Set` of extra directory names) and `gitignore` (a boolean; when true, `.gitignore` rules are applied). Prefer this over `findJsFiles` unless you need to pass your own accumulator.
+
+```javascript
+import { collectSourceFiles } from 'find-duplicate-js';
+
+const files = collectSourceFiles('./src', { gitignore: true });
+```
+
 #### `findDuplicates(directory, threshold = 70, precomputedFiles = null, options = {})`
-`options` supports `excludeDirs` (a `Set` of extra directory names to skip) and `minLength` (minimum normalized-body length for a function to be compared).
+`options` supports `excludeDirs` (a `Set` of extra directory names to skip), `minLength` (minimum normalized-body length for a function to be compared), `gitignore` (apply `.gitignore` rules when this function walks the tree itself), and `onProgress` (a callback receiving `{ phase, current, total }` as files are parsed and functions compared).
 Analyzes the directory and returns:
 ```javascript
 {
@@ -708,6 +763,11 @@ The tool reads files inside your project directory and writes nothing. The web U
 For custom exclusions, use the `--exclude` flag:
 ```bash
 find-duplicate ./src --exclude vendor,generated
+```
+
+Or reuse the ignore rules you already maintain:
+```bash
+find-duplicate ./src --gitignore
 ```
 
 ### Q: What does a "structural" 100% mean?

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { extractFunctions } from './find-duplicates-parser.js';
 import { stripFormatting } from './find-duplicates-normalize.js';
+import { createGitignoreMatcher } from './find-duplicates-gitignore.js';
 import {
   applyComponentAdjustment,
   requiredRawSimilarity,
@@ -24,6 +25,50 @@ const SKIPPED_DIRECTORIES = new Set([
 // variants (.mjs/.cjs) and their TypeScript counterparts (.mts/.cts).
 const CODE_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts'];
 
+// Buckets in a normalized body's character histogram: one per ASCII code plus
+// a catch-all for everything above. Normalized bodies are effectively ASCII
+// (identifiers collapse to V and string contents are erased), so the catch-all
+// is almost always empty - and lumping those characters together can only make
+// the histogram bound below *smaller*, never larger, so it stays a valid bound.
+const HISTOGRAM_BUCKETS = 129;
+const OTHER_BUCKET = 128;
+
+/**
+ * Builds a character-frequency histogram for a string.
+ * @param {string} str - The (normalized) function body
+ * @returns {Uint32Array} Counts per character bucket
+ */
+function buildHistogram(str) {
+  const histogram = new Uint32Array(HISTOGRAM_BUCKETS);
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    histogram[code < OTHER_BUCKET ? code : OTHER_BUCKET]++;
+  }
+  return histogram;
+}
+
+/**
+ * Lower bound on the edit distance between two strings, from their character
+ * histograms alone.
+ * @param {Uint32Array} histogram1 - Histogram of the first string
+ * @param {Uint32Array} histogram2 - Histogram of the second string
+ * @returns {number} A value that is guaranteed to be <= the true Levenshtein distance
+ * @description Every single-character edit changes the character multiset by at
+ * most 2 (a substitution removes one character and adds another; an insert or
+ * delete changes it by 1), so `L1 / 2` can never exceed the true distance.
+ * Computing it costs a fixed 129 operations, against the O(len * maxDistance)
+ * of the banded DP it lets us skip - so pairs that merely *look* similar in
+ * length but share no characters are rejected for a fraction of the price.
+ */
+function histogramDistanceBound(histogram1, histogram2) {
+  let total = 0;
+  for (let i = 0; i < HISTOGRAM_BUCKETS; i++) {
+    const diff = histogram1[i] - histogram2[i];
+    total += diff < 0 ? -diff : diff;
+  }
+  return Math.ceil(total / 2);
+}
+
 /**
  * Decides whether a file name is a scannable JS/TS source file.
  * @param {string} name - Base file name (not a full path)
@@ -44,28 +89,87 @@ function isCodeFile(name) {
  * @param {Array<string>} fileList - Accumulator array for found files (used internally)
  * @param {Set<string>|null} excludeDirs - Extra directory names to skip,
  *   on top of the built-in skip list (e.g. from the --exclude CLI flag)
+ * @param {{ignore?: {ignores: Function}|null, visitedRealPaths?: Set<string>}} [walkState] -
+ *   Internal walk state: an optional gitignore matcher and the set of real
+ *   directory paths already visited (used to break symlink cycles)
  * @returns {Array<string>} Array of absolute file paths to JS/TS source files
  * @description Automatically skips node_modules, .git, dist, build, and
- * coverage directories, plus declaration files and minified bundles
+ * coverage directories, plus declaration files and minified bundles.
+ * Directories that cannot be read (permissions, races, broken links) produce a
+ * warning on stderr and are skipped, rather than aborting the whole scan -
+ * a single unreadable directory should not cost you the other 10,000 files.
  */
-function findJsFiles(dir, fileList = [], excludeDirs = null) {
+function findJsFiles(dir, fileList = [], excludeDirs = null, walkState = {}) {
+  const ignore = walkState.ignore || null;
+
+  // Symlinked directories are followed, so a link pointing at one of its own
+  // ancestors would otherwise recurse until the path length blows up
+  // (`a/link/a/link/...` until ELOOP or a stack overflow kills the process).
+  // Remembering the real path of every directory entered turns that cycle into
+  // a single visit. Only symlinks need the realpath() syscall - a plain
+  // directory cannot create a cycle.
+  let visited = walkState.visitedRealPaths;
+  if (!visited) {
+    visited = new Set();
+    try {
+      visited.add(fs.realpathSync(dir));
+    } catch {
+      // Unresolvable root: fall through and let readdir report the problem.
+    }
+  }
+
   // withFileTypes avoids a separate statSync() syscall per entry - the
   // Dirent already reports whether it's a directory. Symlinks fall back to
   // statSync (Dirent.isDirectory() doesn't follow them) to preserve the
   // original behavior for that rare case.
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (error) {
+    console.warn(`⚠️  Skipping unreadable directory ${dir}: ${error.message}`);
+    return fileList;
+  }
 
   entries.forEach(entry => {
     const filePath = path.join(dir, entry.name);
-    const isDirectory = entry.isSymbolicLink()
-      ? fs.statSync(filePath).isDirectory()
-      : entry.isDirectory();
+    const isSymlink = entry.isSymbolicLink();
+
+    let isDirectory;
+    if (isSymlink) {
+      try {
+        isDirectory = fs.statSync(filePath).isDirectory();
+      } catch {
+        // Broken symlink - nothing to scan, and not worth a warning.
+        return;
+      }
+    } else {
+      isDirectory = entry.isDirectory();
+    }
 
     if (isDirectory) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name) && !(excludeDirs && excludeDirs.has(entry.name))) {
-        findJsFiles(filePath, fileList, excludeDirs);
+      if (SKIPPED_DIRECTORIES.has(entry.name) || (excludeDirs && excludeDirs.has(entry.name))) {
+        return;
       }
+      if (ignore && ignore.ignores(filePath, true)) {
+        return;
+      }
+      if (isSymlink) {
+        let realPath;
+        try {
+          realPath = fs.realpathSync(filePath);
+        } catch {
+          return;
+        }
+        if (visited.has(realPath)) {
+          return; // Already scanned through another path - this is a cycle.
+        }
+        visited.add(realPath);
+      }
+      findJsFiles(filePath, fileList, excludeDirs, { ignore, visitedRealPaths: visited });
     } else if (isCodeFile(entry.name)) {
+      if (ignore && ignore.ignores(filePath, false)) {
+        return;
+      }
       fileList.push(filePath);
     }
   });
@@ -79,10 +183,12 @@ function findJsFiles(dir, fileList = [], excludeDirs = null) {
  * @param {number} similarityThreshold - Minimum similarity percentage to consider as duplicate (default: 70)
  * @param {Array<string>|null} precomputedFiles - Optional pre-computed list of files (from findJsFiles),
  * to avoid walking the directory tree twice when the caller already needs the file list
- * @param {{excludeDirs?: Set<string>, minLength?: number}} options - Optional filters:
- * `excludeDirs` (extra directory names to skip when this function walks the
- * tree itself) and `minLength` (minimum normalized-body length in characters
- * for a function to take part in comparison; filters out trivial one-liners)
+ * @param {{excludeDirs?: Set<string>, minLength?: number, onProgress?: Function}} options -
+ * Optional filters: `excludeDirs` (extra directory names to skip when this
+ * function walks the tree itself), `minLength` (minimum normalized-body length
+ * in characters for a function to take part in comparison; filters out trivial
+ * one-liners) and `onProgress` (called with `{phase, current, total}` as files
+ * are parsed and functions compared, for long scans)
  * @returns {{duplicates: Array<{func1: Object, func2: Object, similarity: string}>, totalFunctions: number}} Analysis results
  * @description Extracts all functions from JavaScript files in the directory and compares them pairwise
  * to find duplicates based on normalized code similarity
@@ -90,11 +196,18 @@ function findJsFiles(dir, fileList = [], excludeDirs = null) {
 function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = null, options = {}) {
   // Allow callers that already walked the directory (e.g. to report a file
   // count) to pass the list in, instead of walking the tree a second time.
-  const jsFiles = precomputedFiles || findJsFiles(directory, [], options.excludeDirs || null);
+  const jsFiles = precomputedFiles || findJsFiles(
+    directory,
+    [],
+    options.excludeDirs || null,
+    { ignore: options.gitignore ? createGitignoreMatcher(directory) : null }
+  );
   let allFunctions = [];
 
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+
   // Extract functions from all files
-  jsFiles.forEach(file => {
+  jsFiles.forEach((file, index) => {
     try {
       const code = fs.readFileSync(file, 'utf8');
       const functions = extractFunctions(code, file);
@@ -102,6 +215,7 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
     } catch (error) {
       console.error(`❌ Error reading file ${file}:`, error.message);
     }
+    if (onProgress) onProgress({ phase: 'parse', current: index + 1, total: jsFiles.length });
   });
 
   if (options.minLength > 0) {
@@ -136,9 +250,17 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
   // skipped any two functions that shared a name within the same file,
   // which meant copy-pasted same-named methods - e.g. two classes each
   // with a `render()` - were never reported as duplicates.)
+  // Histograms are built once per function (O(total characters)) and then read
+  // O(1) times per pair, so the precompute is paid back as soon as it rejects
+  // a single comparison.
+  const histograms = allFunctions.map(func => buildHistogram(func.body));
+
   for (let i = 0; i < allFunctions.length; i++) {
     const func1 = allFunctions[i];
     const len1 = func1.body.length;
+    const histogram1 = histograms[i];
+
+    if (onProgress) onProgress({ phase: 'compare', current: i + 1, total: allFunctions.length });
 
     for (let j = i + 1; j < allFunctions.length; j++) {
       const func2 = allFunctions[j];
@@ -172,7 +294,20 @@ function findDuplicates(directory, similarityThreshold = 70, precomputedFiles = 
 
       const maxLen = Math.max(len1, len2);
       const maxDistance = maxLen === 0 ? 0 : Math.min(maxLen, Math.ceil(maxLen * (1 - requiredRaw / 100)));
-      const distance = levenshteinDistanceBounded(func1.body, func2.body, maxDistance);
+
+      // Cheap rejection before the DP: if the two bodies do not even share
+      // enough characters to be within maxDistance edits of each other, no
+      // arrangement of those characters can bring them closer.
+      if (histogramDistanceBound(histogram1, histograms[j]) > maxDistance) {
+        continue;
+      }
+
+      // Identical normalized bodies are the single most common outcome on a
+      // codebase with real copy-paste, and they are exactly the case where the
+      // banded DP does the most work for a foregone conclusion.
+      const distance = func1.body === func2.body
+        ? 0
+        : levenshteinDistanceBounded(func1.body, func2.body, maxDistance);
 
       if (distance > maxDistance) {
         // Bounded search hit its ceiling before finishing - the true
@@ -277,4 +412,21 @@ function groupDuplicates(duplicates) {
   );
 }
 
-export { findJsFiles, findDuplicates, groupDuplicates };
+/**
+ * Walks a directory for JS/TS files, honouring .gitignore when asked to.
+ * @param {string} directory - Directory to scan
+ * @param {{excludeDirs?: Set<string>, gitignore?: boolean}} [options] - Scan filters
+ * @returns {Array<string>} Absolute paths of the files to analyze
+ * @description Convenience wrapper so the two bin entry points build the
+ * gitignore matcher the same way instead of each assembling walk state.
+ */
+function collectSourceFiles(directory, options = {}) {
+  return findJsFiles(
+    directory,
+    [],
+    options.excludeDirs || null,
+    { ignore: options.gitignore ? createGitignoreMatcher(directory) : null }
+  );
+}
+
+export { findJsFiles, findDuplicates, groupDuplicates, collectSourceFiles };

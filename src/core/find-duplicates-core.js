@@ -23,4 +23,4 @@ export { normalizeCode } from './find-duplicates-normalize.js';
 
 export { calculateSimilarity } from './find-duplicates-similarity.js';
 
-export { findJsFiles, findDuplicates, groupDuplicates } from './find-duplicates-scanner.js';
+export { findJsFiles, findDuplicates, groupDuplicates, collectSourceFiles } from './find-duplicates-scanner.js';

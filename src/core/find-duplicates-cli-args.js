@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 
 /**
  * Parses the shared `directory [threshold]` positional arguments used by
@@ -137,4 +138,121 @@ function parseMinLengthFlag(args) {
   return { minLength, args: remaining };
 }
 
-export { parseDirectoryArgs, parsePortFlag, parseExcludeFlag, parseMinLengthFlag };
+/**
+ * Extracts an `--output <file>` / `--output=<file>` flag: a path to write the
+ * report to instead of stdout.
+ * @param {string[]} args - Raw args
+ * @returns {{output: string|undefined, args: string[]}}
+ */
+function parseOutputFlag(args) {
+  const { value, args: remaining } = extractFlagValue(args, '--output', 'report.json');
+
+  if (value !== undefined && value.trim() === '') {
+    console.error('❌ Error: --output requires a file path');
+    process.exit(1);
+  }
+
+  return { output: value, args: remaining };
+}
+
+/**
+ * Extracts a `--config <file>` / `--config=<file>` flag.
+ * @param {string[]} args - Raw args
+ * @returns {{config: string|undefined, args: string[]}}
+ */
+function parseConfigFlag(args) {
+  const { value, args: remaining } = extractFlagValue(args, '--config', '.findduplicaterc.json');
+  return { config: value, args: remaining };
+}
+
+// Looked for in the scan's working directory when --config is not given.
+const DEFAULT_CONFIG_FILENAME = '.findduplicaterc.json';
+
+// Every key a config file may set, mapped to the CLI flag it stands in for.
+// Unknown keys are rejected rather than ignored: a typo'd "minLenght" that
+// silently does nothing is worse than a config file that refuses to load.
+const CONFIG_KEYS = {
+  directory: '[directory]',
+  threshold: '[threshold]',
+  exclude: '--exclude',
+  minLength: '--min-length',
+  port: '--port',
+  output: '--output',
+  ui: '--ui',
+  json: '--json',
+  gitignore: '--gitignore',
+  failOnDuplicates: '--fail-on-duplicates'
+};
+
+/**
+ * Loads a configuration file holding default values for the CLI flags.
+ * @param {string|undefined} explicitPath - Path from `--config`, if given
+ * @param {string} [cwd] - Directory to look in for the default config file
+ * @returns {Object} The parsed config, or an empty object when there is none
+ * @description An explicitly requested config file that is missing or invalid
+ * is a hard error - the user asked for those settings and running with
+ * defaults instead would silently scan with the wrong threshold. A missing
+ * `.findduplicaterc.json` found by convention is simply "no config".
+ */
+function loadConfig(explicitPath, cwd = process.cwd()) {
+  const configPath = explicitPath || path.join(cwd, DEFAULT_CONFIG_FILENAME);
+
+  if (!fs.existsSync(configPath)) {
+    if (explicitPath) {
+      console.error(`❌ Error: Config file "${explicitPath}" does not exist`);
+      process.exit(1);
+    }
+    return {};
+  }
+
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (error) {
+    console.error(`❌ Error: Could not parse config file "${configPath}": ${error.message}`);
+    process.exit(1);
+  }
+
+  if (config === null || typeof config !== 'object' || Array.isArray(config)) {
+    console.error(`❌ Error: Config file "${configPath}" must contain a JSON object`);
+    process.exit(1);
+  }
+
+  const unknownKeys = Object.keys(config).filter(key => !(key in CONFIG_KEYS));
+  if (unknownKeys.length > 0) {
+    console.error(
+      `❌ Error: Unknown key${unknownKeys.length > 1 ? 's' : ''} in "${configPath}": ${unknownKeys.join(', ')}\n` +
+      `   Supported keys: ${Object.keys(CONFIG_KEYS).join(', ')}`
+    );
+    process.exit(1);
+  }
+
+  return config;
+}
+
+/**
+ * Normalizes a config file's `exclude` value into the Set the scanner wants.
+ * @param {string|string[]|undefined} value - Comma-separated string or array
+ * @returns {Set<string>|undefined}
+ */
+function excludeSetFromConfig(value) {
+  if (value === undefined) return undefined;
+
+  const names = (Array.isArray(value) ? value : String(value).split(','))
+    .map(name => String(name).trim())
+    .filter(name => name.length > 0);
+
+  return names.length > 0 ? new Set(names) : undefined;
+}
+
+export {
+  parseDirectoryArgs,
+  parsePortFlag,
+  parseExcludeFlag,
+  parseMinLengthFlag,
+  parseOutputFlag,
+  parseConfigFlag,
+  loadConfig,
+  excludeSetFromConfig,
+  DEFAULT_CONFIG_FILENAME
+};
