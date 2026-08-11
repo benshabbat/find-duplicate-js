@@ -1,13 +1,26 @@
 # Keeps dev dependencies and workflow actions patched so npm audit
 # advisories (like the brace-expansion one fixed in 1.8.0) surface as PRs
 # instead of surprise CI failures.
+#
+# `cooldown` deliberately delays adopting brand-new releases. eslint pulls in
+# ~70 transitive packages, and the usual npm compromise is a hijacked
+# maintainer account publishing a malicious patch that gets yanked within a
+# day or two. Waiting a few days means those never reach the lockfile.
+# Security advisories are exempt from cooldown by design, so real fixes still
+# arrive immediately.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
+      semver-major-days: 7
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 5
