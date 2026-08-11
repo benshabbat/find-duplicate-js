@@ -6,6 +6,7 @@
   "type": "module",
   "bin": {
     "find-duplicate": "find-duplicates.js",
+    "find-duplicate-js": "find-duplicates.js",
     "find-duplicate-ui": "src/ui/find-duplicates-ui.js"
   },
   "scripts": {

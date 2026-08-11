@@ -120,6 +120,164 @@ const STATEMENT_KEYWORDS = new Set([
 ]);
 
 /**
+ * Skips whitespace and comments forward from an index.
+ * @param {string} code - The source code
+ * @param {number} index - Index to start skipping at
+ * @returns {number} Index of the next meaningful character
+ */
+function skipTrivia(code, index) {
+  let i = index;
+
+  while (i < code.length) {
+    const char = code[i];
+
+    if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
+      i++;
+      continue;
+    }
+    if (char === '/' && code[i + 1] === '/') {
+      while (i < code.length && code[i] !== '\n') i++;
+      continue;
+    }
+    if (char === '/' && code[i + 1] === '*') {
+      i += 2;
+      while (i < code.length - 1 && !(code[i] === '*' && code[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    break;
+  }
+
+  return i;
+}
+
+/**
+ * Skips a string or template literal.
+ * @param {string} code - The source code
+ * @param {number} index - Index of the opening quote
+ * @returns {number} Index just past the closing quote
+ */
+function skipStringLiteral(code, index) {
+  const quote = code[index];
+  let i = index + 1;
+
+  while (i < code.length) {
+    if (code[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (code[i] === quote) return i + 1;
+    i++;
+  }
+
+  return i;
+}
+
+/**
+ * Returns the identifier immediately preceding an index, ignoring whitespace.
+ * @param {string} code - The source code
+ * @param {number} index - Index to look back from
+ * @returns {string} The preceding identifier, or '' when there is none
+ */
+function wordBefore(code, index) {
+  let end = index;
+  while (end > 0 && /\s/.test(code[end - 1])) end--;
+
+  let start = end;
+  while (start > 0 && /[a-zA-Z0-9_$]/.test(code[start - 1])) start--;
+
+  return code.slice(start, end);
+}
+
+// A return type annotation is short in practice; refusing to scan further keeps
+// a malformed one from swallowing the rest of the file.
+const RETURN_TYPE_SCAN_LIMIT = 2000;
+
+// Characters that can follow an inline object type: more type syntax
+// (`{ a: 1 } | Other`, `{ a: 1 }[]`, `Array<{ a: 1 }>`, `{ a: 1 } => x`) or the
+// `{` of the body it annotates. Anything else means the braces were the body.
+const TYPE_CONTINUATION = /[|&[>),\].={]/;
+
+/**
+ * Scans a TypeScript return type annotation and returns the index of the `{`
+ * that opens the function body after it.
+ * @param {string} code - The source code
+ * @param {number} start - Index just past the annotation's `:`
+ * @param {boolean} expectArrow - True when a `=>` must close the annotation
+ * @returns {number} Index of the body's opening brace, or -1
+ * @description Nesting is tracked so that a `{` belonging to the type - the
+ * common `Promise<{ user: User } | { response: Response }>` - is never mistaken
+ * for the body. A `:` that does not introduce a type at all (the middle of a
+ * ternary, `cond ?\n  render(a) :\n  render(b)`) is rejected rather than
+ * scanned past, so a call is never reported as a function definition.
+ */
+function scanReturnType(code, start, expectArrow) {
+  const limit = Math.min(code.length, start + RETURN_TYPE_SCAN_LIMIT);
+  let depth = 0;
+  let previous = '';
+  let i = start;
+
+  while (i < limit) {
+    i = skipTrivia(code, i);
+    if (i >= limit) break;
+
+    const char = code[i];
+
+    if (char === '"' || char === "'" || char === '`') {
+      i = skipStringLiteral(code, i);
+      previous = char;
+      continue;
+    }
+
+    if (char === '=' && code[i + 1] === '>') {
+      if (expectArrow && depth === 0) {
+        const brace = skipTrivia(code, i + 2);
+        if (code[brace] === '{') return brace;
+      }
+      i += 2;
+      previous = '>';
+      continue;
+    }
+
+    if (char === '{') {
+      const end = findMatchingBrace(code, i);
+      if (end === -1) return -1;
+
+      // Inside generics or parameters the braces can only be an object type,
+      // and so can braces sitting directly after the `:` - a return type is
+      // never empty, so the first token after it is always part of the type.
+      if (depth > 0 || previous === '' || TYPE_CONTINUATION.test(code[skipTrivia(code, end + 1)] || '')) {
+        i = end + 1;
+        previous = '}';
+        continue;
+      }
+
+      return expectArrow ? -1 : i;
+    }
+
+    if (char === '(') {
+      // Types never call anything, so `name(` means the `:` was not a type
+      // annotation. `new (x: T) => T` is the one legitimate form.
+      if (/[a-zA-Z0-9_$)\]]/.test(previous) && wordBefore(code, i) !== 'new') return -1;
+      depth++;
+    } else if (char === '[' || char === '<') {
+      depth++;
+    } else if (char === ')' || char === ']' || char === '>') {
+      if (depth === 0) return -1;
+      depth--;
+    } else if (depth === 0 && (char === ';' || char === ',' || char === '}' || char === '=')) {
+      // End of a statement or of the enclosing block: there is no body here.
+      return -1;
+    }
+
+    previous = char;
+    i++;
+  }
+
+  return -1;
+}
+
+/**
  * Given the index of a parameter list's opening parenthesis, returns the index
  * of the `{` that starts the function body, or -1 if this is not a function.
  * @param {string} code - The source code
@@ -136,24 +294,16 @@ function findBodyBrace(code, openParenIndex, expectArrow) {
   const closingParenIndex = findMatchingParen(code, openParenIndex);
   if (closingParenIndex === -1) return -1;
 
-  let cursor = closingParenIndex + 1;
-  const skipSpace = () => {
-    while (cursor < code.length && /\s/.test(code[cursor])) cursor++;
-  };
-
-  skipSpace();
+  let cursor = skipTrivia(code, closingParenIndex + 1);
 
   // TypeScript return type: `): ReturnType =>` or `): ReturnType {`
   if (code[cursor] === ':') {
-    const terminator = expectArrow ? code.indexOf('=>', cursor) : code.indexOf('{', cursor);
-    if (terminator === -1) return -1;
-    cursor = terminator;
+    return scanReturnType(code, cursor + 1, expectArrow);
   }
 
   if (expectArrow) {
     if (code[cursor] !== '=' || code[cursor + 1] !== '>') return -1;
-    cursor += 2;
-    skipSpace();
+    cursor = skipTrivia(code, cursor + 2);
   }
 
   // Only concise bodies wrapped in braces are extracted; `x => x + 1` has no
@@ -295,13 +445,13 @@ function extractFunctions(code, filePath) {
 }
 
 /**
- * Extracts the body of a function from source code
+ * Finds the closing brace matching an opening one
  * @param {string} code - The JavaScript source code
  * @param {number} startBrace - The index of the opening brace
- * @returns {string|null} The function body content, or null if extraction fails
- * @description Handles nested braces, strings, and comments to accurately extract function bodies
+ * @returns {number} Index of the matching `}`, or -1 when it is unbalanced
+ * @description Handles nested braces, strings, and comments
  */
-function extractFunctionBody(code, startBrace) {
+function findMatchingBrace(code, startBrace) {
   let braceCount = 1;
   let i = startBrace + 1;
   let inString = false;
@@ -342,11 +492,20 @@ function extractFunctionBody(code, startBrace) {
     i++;
   }
 
-  if (braceCount === 0) {
-    return code.substring(startBrace + 1, i - 1);
-  }
+  return braceCount === 0 ? i - 1 : -1;
+}
 
-  return null;
+/**
+ * Extracts the body of a function from source code
+ * @param {string} code - The JavaScript source code
+ * @param {number} startBrace - The index of the opening brace
+ * @returns {string|null} The function body content, or null if extraction fails
+ * @description Handles nested braces, strings, and comments to accurately extract function bodies
+ */
+function extractFunctionBody(code, startBrace) {
+  const endBrace = findMatchingBrace(code, startBrace);
+
+  return endBrace === -1 ? null : code.substring(startBrace + 1, endBrace);
 }
 
 /**

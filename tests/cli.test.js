@@ -439,3 +439,29 @@ describe('find-duplicate-ui bin (src/ui/find-duplicates-ui.js)', () => {
     }
   });
 });
+
+describe('bin entries', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+
+  test('a bin is named after the package, so `npx find-duplicate-js` resolves', () => {
+    // With no bin matching the package name, npx cannot pick between the
+    // remaining ones and fails with "could not determine executable to run".
+    assert.ok(
+      Object.keys(pkg.bin).includes(pkg.name),
+      `bin should include an entry named ${pkg.name}, got: ${Object.keys(pkg.bin).join(', ')}`
+    );
+    assert.strictEqual(pkg.bin[pkg.name], pkg.bin['find-duplicate'], 'The alias runs the same CLI');
+  });
+
+  test('every bin entry points at an executable file with a node shebang', () => {
+    for (const [name, target] of Object.entries(pkg.bin)) {
+      const targetPath = path.join(repoRoot, target);
+      assert.ok(fs.existsSync(targetPath), `bin ${name} -> ${target} should exist`);
+      assert.match(
+        fs.readFileSync(targetPath, 'utf8').split('\n', 1)[0],
+        /^#!\/usr\/bin\/env node/,
+        `bin ${name} should start with a node shebang`
+      );
+    }
+  });
+});
